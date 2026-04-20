@@ -1,0 +1,9 @@
+fromFeatureIdentifier,toFeatureIdentifier,fromFeatureName,toFeatureName,fromAssayName,toAssayName,edgeType,edgeDirection,knowledgeSource,evidenceScore,isDirected
+P1,P2,CFH,C3,protein,protein,proteinProteinInteraction,undirected,STRING,0.95,FALSE
+P1,P3,CFH,CR1,protein,protein,proteinProteinInteraction,undirected,STRING,0.92,FALSE
+T1,T2,CFH transcript,C3 transcript,transcript,transcript,coexpressionPrior,undirected,Reactome,0.80,FALSE
+T1,P1,CFH transcript,CFH,transcript,protein,rnaProtein,directed,CentralDogma,1.00,TRUE
+T2,P2,C3 transcript,C3,transcript,protein,rnaProtein,directed,CentralDogma,1.00,TRUE
+M1,P1,Citrate,CFH,metabolite,protein,proteinMetabolite,directed,Recon3D,0.88,TRUE
+M2,P2,Succinate,C3,metabolite,protein,proteinMetabolite,directed,Recon3D,0.77,TRUE
+DrugX,P2,Drug X,C3,drug,protein,drugTarget,directed,OpenTargets,0.90,TRUE

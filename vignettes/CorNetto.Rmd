@@ -1,0 +1,230 @@
+---
+title: "CorNetto Workflow"
+output:
+  BiocStyle::html_document:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{CorNetto Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(CorNetto)
+```
+
+# Introduction
+
+CorNetto builds knowledge-guided multi-omic correlation networks from
+normalized assay data stored in a `MultiAssayExperiment`. It is intended
+for workflows where transcriptomic, proteomic, metabolomic, or related
+assays are already normalized and the analysis question is whether
+groups differ in correlation structure, prior-supported connectivity, or
+node-level rewiring.
+
+The package uses standard Bioconductor containers for assay and sample
+metadata, and returns standardized edge tables that can be combined,
+converted to `igraph` objects, or exported as Cytoscape-ready node and
+edge tables.
+
+# Installation
+
+After acceptance to Bioconductor, install CorNetto with:
+
+```{r install, eval = FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+BiocManager::install("CorNetto")
+```
+
+# Example data
+
+```{r load-data}
+analysisData <- exampleAnalysisData()
+knowledgeNetwork <- exampleKnowledgeNetwork()
+seedNodes <- exampleSeedNodes()
+
+analysisData
+head(knowledgeNetwork)
+seedNodes
+```
+
+The synthetic example contains three assays named `protein`,
+`transcript`, and `metabolite`. The example prior network also contains a
+drug-target edge to demonstrate that prior networks can include static
+knowledge beyond the measured assays. Sparse correlation functions must
+therefore be given only prior edges whose assay names are present in the
+analysis object.
+
+```{r measured-priors}
+measuredAssays <- c("protein", "transcript", "metabolite")
+measuredKnowledgeNetwork <- knowledgeNetwork[
+    knowledgeNetwork$fromAssayName %in% measuredAssays &
+        knowledgeNetwork$toAssayName %in% measuredAssays,
+    ,
+    drop = FALSE
+]
+```
+
+# Dense group-specific correlations
+
+`createCorrelationNetwork()` computes all pairwise within-omic
+correlations for one assay and one group. `createCorrelationNetworks()`
+is the multi-assay or multi-group wrapper.
+
+```{r dense-correlations}
+recoveredProteinNetwork <- createCorrelationNetwork(
+    analysisData = analysisData,
+    assayName = "protein",
+    groupColumn = "clinicalGroup",
+    groupLevel = "Recovered",
+    correlationMethod = "pearson",
+    minimumAbsoluteCorrelation = 0,
+    adjustedPValueThreshold = 1,
+    pAdjustMethod = "fdr",
+    storeResult = FALSE
+)
+
+head(recoveredProteinNetwork)
+```
+
+# Prior-guided sparse correlations
+
+Sparse correlation functions calculate only feature pairs supported by a
+prior network. This avoids exhaustive cross-omic testing and keeps the
+dynamic network aligned to interpretable prior knowledge.
+
+```{r sparse-correlations}
+sparseWithin <- createSparseWithinOmicCorrelations(
+    analysisData = analysisData,
+    knowledgeNetwork = measuredKnowledgeNetwork,
+    groupColumn = "clinicalGroup",
+    groupLevel = "Recovered",
+    minimumAbsoluteCorrelation = 0,
+    adjustedPValueThreshold = 1,
+    storeResult = FALSE
+)
+
+sparseCross <- createSparseCrossOmicCorrelations(
+    analysisData = analysisData,
+    knowledgeNetwork = measuredKnowledgeNetwork,
+    groupColumn = "clinicalGroup",
+    groupLevel = "Recovered",
+    minimumAbsoluteCorrelation = 0,
+    adjustedPValueThreshold = 1,
+    storeResult = FALSE
+)
+
+combinedDynamicNetwork <- combineCorrelationNetworks(
+    recoveredProteinNetwork,
+    sparseWithin,
+    sparseCross
+)
+
+c(nrow(sparseWithin), nrow(sparseCross), nrow(combinedDynamicNetwork))
+```
+
+# Differential correlation and rewiring
+
+`testDifferentialCorrelation()` compares correlation coefficients between
+two groups. `createDifferentialCorrelationNetwork()` converts the test
+results to a weighted network, and `calculateRewiringScores()` summarizes
+node-level rewiring.
+
+```{r differential-correlation}
+differentialResults <- testDifferentialCorrelation(
+    analysisData = analysisData,
+    groupColumn = "clinicalGroup",
+    groupLevels = c("PASC", "Recovered"),
+    assayName = "protein",
+    correlationMethod = "pearson",
+    minimumAbsoluteCorrelation = 0,
+    adjustedPValueThreshold = 1,
+    pAdjustMethod = "fdr",
+    storeResult = FALSE
+)
+
+differentialNetwork <- createDifferentialCorrelationNetwork(
+    differentialCorrelationTable = differentialResults,
+    differenceAdjustedPValueThreshold = 1,
+    minimumAbsoluteCorrelation = 0
+)
+
+rewiringScores <- calculateRewiringScores(
+    differentialCorrelationNetwork = differentialNetwork,
+    storeResult = FALSE
+)
+
+head(rewiringScores)
+```
+
+# Integrated and focused network
+
+`createIntegratedNetwork()` merges static prior knowledge and dynamic
+correlation layers. `createFocusedNetwork()` extracts a seed-centered
+neighborhood, which is useful for pathway-driven analyses.
+
+```{r integrated-network}
+integratedNetwork <- createIntegratedNetwork(
+    knowledgeNetwork = knowledgeNetwork,
+    correlationNetwork = combinedDynamicNetwork,
+    differentialCorrelationNetwork = differentialNetwork,
+    includeReverseEdges = TRUE
+)
+
+focusedNetwork <- createFocusedNetwork(
+    networkEdgeTable = integratedNetwork,
+    seedNodes = seedNodes,
+    neighborhoodOrder = 1
+)
+
+cytoscapeTables <- prepareCytoscapeTables(
+    networkEdgeTable = focusedNetwork,
+    rewiringTable = rewiringScores
+)
+
+names(cytoscapeTables)
+nrow(cytoscapeTables$nodes)
+nrow(cytoscapeTables$edges)
+```
+
+# Graph creation
+
+`createNetworkGraph()` converts a standardized CorNetto edge table to an
+`igraph` object. Plotting can then use standard igraph methods.
+
+```{r graph-plot, fig.width = 8, fig.height = 6}
+graphObject <- createNetworkGraph(focusedNetwork)
+plot(
+    graphObject,
+    layout = igraph::layout_with_fr(graphObject),
+    vertex.label = NA,
+    vertex.size = 8,
+    edge.width = 1,
+    main = "Example focused CorNetto network"
+)
+```
+
+# Export
+
+Use `writeNetworkTables()` when Cytoscape-ready files are needed. The
+example writes to a temporary directory.
+
+```{r export}
+writtenFiles <- writeNetworkTables(
+    networkTables = cytoscapeTables,
+    directoryPath = tempdir(),
+    prefix = "cornettoExample",
+    fileFormat = "tsv"
+)
+
+basename(writtenFiles)
+```
+
+# Session information
+
+```{r session-info}
+sessionInfo()
+```

@@ -1,0 +1,48 @@
+Package: CorNetto
+Title: Knowledge-Guided Multi-Omic Correlation Network Analysis
+Version: 0.99.0
+Authors@R: c(
+    person(
+        given = "Bradley",
+        family = "Ward",
+        role = c("aut", "cre"),
+        email = "bradleyalexward@gmail.com"
+    )
+    )
+Description: CorNetto provides a workflow for building knowledge-guided
+    multi-omic correlation networks from normalized transcriptomic,
+    proteomic, and metabolomic abundance data. The package supports
+    group-specific correlation networks, prior-restricted sparse
+    correlations, differential correlation testing, rewiring scores,
+    pathway-focused subnetworks, and graph export for downstream
+    visualization. CorNetto is designed around Bioconductor data
+    containers so that multi-omic assays and sample metadata can be
+    managed consistently throughout the analysis workflow.
+License: Artistic-2.0
+Encoding: UTF-8
+LazyData: false
+Depends:
+    R (>= 4.3.0)
+Imports:
+    DGCA,
+    graphics,
+    grDevices,
+    igraph,
+    methods,
+    MultiAssayExperiment,
+    qvalue,
+    S4Vectors,
+    stats,
+    SummarizedExperiment,
+    utils,
+    readr
+Suggests:
+    BiocStyle,
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+biocViews: GraphAndNetwork, Metabolomics, Proteomics, SystemsBiology, Transcriptomics
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
