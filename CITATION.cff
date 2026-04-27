@@ -6,7 +6,8 @@ authors:
   - family-names: Ward
     given-names: Bradley
     email: bradleyalexward@gmail.com
-version: 0.99.0
+version: 0.99.1
+doi: 10.5281/zenodo.19815672
 license: Artistic-2.0
 repository-code: "https://github.com/bradleyalexward/CorNetto"
 url: "https://github.com/bradleyalexward/CorNetto"
