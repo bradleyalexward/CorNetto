@@ -2,10 +2,13 @@ bibentry(
   bibtype = "Manual",
   title = "CorNetto: Knowledge-Guided Multi-Omic Correlation Network Analysis",
   author = personList(
-    person(given = "Bradley", family = "Ward")
+    person(given = "Bradley", family = "Ward"),
+    person(given = "Jean Cyr", family = "Yombi"),
+    person(given = "Leïla", family = "Belkhir"),
+    person(given = "Laure", family = "Elens")
   ),
   year = "2026",
-  note = "R package version 0.99.0",
+  note = "R package version 0.99.1",
   url = "https://github.com/bradleyalexward/CorNetto",
   doi = "10.5281/zenodo.19815672"
 )
