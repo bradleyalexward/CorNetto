@@ -5,7 +5,18 @@ title: "CorNetto: Knowledge-Guided Multi-Omic Correlation Network Analysis"
 authors:
   - family-names: Ward
     given-names: Bradley
-    email: bradleyalexward@gmail.com
+    email: bradley.ward@uclouvain.be
+    orcid: "0000-0003-0778-0153"
+    affiliation: "UCLouvain"
+  - family-names: Yombi
+    given-names: Jean Cyr
+    affiliation: "Clinique Universitaire Saint Luc"
+  - family-names: Belkhir
+    given-names: Leïla
+    affiliation: "Clinique Universitaire Saint Luc"
+  - family-names: Elens
+    given-names: Laure
+    affiliation: "UCLouvain"
 version: 0.99.1
 doi: 10.5281/zenodo.19815672
 license: Artistic-2.0
