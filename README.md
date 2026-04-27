@@ -43,7 +43,7 @@ BiocManager::install(c(
 
 If you use or build upon CorNetto, please cite:
 
-Ward, B. (2026). CorNetto: Knowledge-Guided Multi-Omic Correlation Network
+Ward, B., Yombi, J.C., Belkhir, L., Elens, L. (2026). CorNetto: Knowledge-Guided Multi-Omic Correlation Network
 Analysis. R package version 0.99.0.
 https://github.com/bradleyalexward/CorNetto
 
