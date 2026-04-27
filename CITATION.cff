@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use or build upon CorNetto, please cite it as below."
+type: software
+title: "CorNetto: Knowledge-Guided Multi-Omic Correlation Network Analysis"
+authors:
+  - family-names: Ward
+    given-names: Bradley
+    email: bradleyalexward@gmail.com
+version: 0.99.0
+license: Artistic-2.0
+repository-code: "https://github.com/bradleyalexward/CorNetto"
+url: "https://github.com/bradleyalexward/CorNetto"
+abstract: "CorNetto is an R package for knowledge-guided multi-omic correlation network analysis, including sparse prior-restricted correlations, differential correlation testing, rewiring scores, and permutation validation."

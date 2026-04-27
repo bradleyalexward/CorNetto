@@ -22,9 +22,10 @@ test_that("integrated network and neighborhood workflow are available", {
         adjustedPValueThreshold = 1,
         storeResult = FALSE
     )
-    sparseCross <- createSparseCrossOmicCorrelations(
+    sparseMulti <- createSparseMultiOmicCorrelations(
         analysisData = analysisData,
         knowledgeNetwork = measuredKnowledgeNetwork,
+        correlationScope = "all",
         groupColumn = "clinicalGroup",
         groupLevel = "Recovered",
         minimumAbsoluteCorrelation = 0,
@@ -35,7 +36,7 @@ test_that("integrated network and neighborhood workflow are available", {
     integrated <- createIntegratedNetwork(
         knowledgeNetwork = knowledgeNetwork,
         correlationNetwork = dense,
-        sparseCrossOmicCorrelation = sparseCross,
+        sparseMultiOmicCorrelation = sparseMulti,
         includeReverseEdges = TRUE
     )
     expect_true(all(standardColumns %in% names(integrated)))

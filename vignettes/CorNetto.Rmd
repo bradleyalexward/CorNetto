@@ -97,19 +97,10 @@ prior network. This avoids exhaustive cross-omic testing and keeps the
 dynamic network aligned to interpretable prior knowledge.
 
 ```{r sparse-correlations}
-sparseWithin <- createSparseWithinOmicCorrelations(
+sparseMulti <- createSparseMultiOmicCorrelations(
     analysisData = analysisData,
     knowledgeNetwork = measuredKnowledgeNetwork,
-    groupColumn = "clinicalGroup",
-    groupLevel = "Recovered",
-    minimumAbsoluteCorrelation = 0,
-    adjustedPValueThreshold = 1,
-    storeResult = FALSE
-)
-
-sparseCross <- createSparseCrossOmicCorrelations(
-    analysisData = analysisData,
-    knowledgeNetwork = measuredKnowledgeNetwork,
+    correlationScope = "all",
     groupColumn = "clinicalGroup",
     groupLevel = "Recovered",
     minimumAbsoluteCorrelation = 0,
@@ -119,11 +110,31 @@ sparseCross <- createSparseCrossOmicCorrelations(
 
 combinedDynamicNetwork <- combineCorrelationNetworks(
     recoveredProteinNetwork,
-    sparseWithin,
-    sparseCross
+    sparseMulti
 )
 
-c(nrow(sparseWithin), nrow(sparseCross), nrow(combinedDynamicNetwork))
+c(nrow(sparseMulti), nrow(combinedDynamicNetwork))
+```
+
+# Permutation validation
+
+`validateSparseCorrelationEdges()` estimates empirical p-values for
+prior-supported sparse correlations. `permuteDifferentialRewiring()`
+permutes group labels and reruns the differential-correlation workflow
+to validate node-level rewiring scores.
+
+```{r permutation-validation}
+sparseValidation <- validateSparseCorrelationEdges(
+    analysisData = analysisData,
+    knowledgeNetwork = measuredKnowledgeNetwork,
+    correlationScope = "all",
+    groupColumn = "clinicalGroup",
+    groupLevel = "Recovered",
+    nPermutations = 10,
+    seed = 1
+)
+
+head(sparseValidation)
 ```
 
 # Differential correlation and rewiring

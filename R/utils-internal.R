@@ -2,10 +2,10 @@
     list(
         knowledgeNetworks = list(),
         correlationNetworks = list(),
-        sparseWithinOmicCorrelations = list(),
-        sparseCrossOmicCorrelations = list(),
+        sparseMultiOmicCorrelations = list(),
         differentialCorrelationResults = list(),
         rewiringResults = list(),
+        validationResults = list(),
         integratedNetworks = list()
     )
 }
@@ -61,6 +61,45 @@
 
 .logicalEdgeColumns <- function() {
     "isDirected"
+}
+
+.adjustPValuesWithMissing <- function(pValues, pAdjustMethod) {
+    adjustedValues <- rep(NA_real_, length(pValues))
+    keepIndex <- !is.na(pValues)
+    if (!any(keepIndex)) {
+        return(adjustedValues)
+    }
+
+    observedPValues <- as.numeric(pValues[keepIndex])
+    if (identical(pAdjustMethod, "qvalue")) {
+        if (!requireNamespace("qvalue", quietly = TRUE)) {
+            stop(
+                "The `qvalue` package is required when `pAdjustMethod = \"qvalue\"`.",
+                call. = FALSE
+            )
+        }
+        if (length(observedPValues) == 1L) {
+            adjustedValues[keepIndex] <- observedPValues
+            return(adjustedValues)
+        }
+
+        qvalueResult <- tryCatch(
+            qvalue::qvalue(observedPValues),
+            error = function(...) NULL
+        )
+        if (is.null(qvalueResult)) {
+            stop(
+                "qvalue adjustment failed. Try `pAdjustMethod = \"fdr\"` or inspect the p-value distribution.",
+                call. = FALSE
+            )
+        }
+
+        adjustedValues[keepIndex] <- qvalueResult$qvalues
+        return(adjustedValues)
+    }
+
+    adjustedValues[keepIndex] <- stats::p.adjust(observedPValues, method = pAdjustMethod)
+    adjustedValues
 }
 
 .standardNodeColumns <- function() {
@@ -371,8 +410,15 @@
     .assertMultiAssayExperiment(analysisData)
     store <- S4Vectors::metadata(analysisData)$cornetto
     if (is.null(store)) {
-        S4Vectors::metadata(analysisData)$cornetto <- .corNettoStoreTemplate()
+        store <- .corNettoStoreTemplate()
+    } else {
+        template <- .corNettoStoreTemplate()
+        missingSlots <- setdiff(names(template), names(store))
+        if (length(missingSlots)) {
+            store[missingSlots] <- template[missingSlots]
+        }
     }
+    S4Vectors::metadata(analysisData)$cornetto <- store
     analysisData
 }
 
@@ -577,7 +623,7 @@
 }
 
 .isObservedAssayPair <- function(edgeTable) {
-    edgeTable$fromAssayName %in% edgeTable$toAssayName
+    edgeTable$fromAssayName == edgeTable$toAssayName
 }
 
 #' CorNetto Results
@@ -608,15 +654,9 @@ correlationNetworks <- function(analysisData) {
 }
 
 #' @export
-sparseWithinOmicCorrelations <- function(analysisData) {
+sparseMultiOmicCorrelations <- function(analysisData) {
     .assertMultiAssayExperiment(analysisData)
-    .getCorNettoResults(.initializeCorNettoStore(analysisData), "sparseWithinOmicCorrelations")
-}
-
-#' @export
-sparseCrossOmicCorrelations <- function(analysisData) {
-    .assertMultiAssayExperiment(analysisData)
-    .getCorNettoResults(.initializeCorNettoStore(analysisData), "sparseCrossOmicCorrelations")
+    .getCorNettoResults(.initializeCorNettoStore(analysisData), "sparseMultiOmicCorrelations")
 }
 
 #' @export
@@ -629,6 +669,12 @@ differentialCorrelationResults <- function(analysisData) {
 rewiringResults <- function(analysisData) {
     .assertMultiAssayExperiment(analysisData)
     .getCorNettoResults(.initializeCorNettoStore(analysisData), "rewiringResults")
+}
+
+#' @export
+validationResults <- function(analysisData) {
+    .assertMultiAssayExperiment(analysisData)
+    .getCorNettoResults(.initializeCorNettoStore(analysisData), "validationResults")
 }
 
 #' @export

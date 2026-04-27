@@ -2,6 +2,7 @@
 ^data-raw$
 ^README\.md$
 ^\.github$
+^CITATION\.cff$
 ^\.git$
 ^\.Rhistory$
 ^\.RData$

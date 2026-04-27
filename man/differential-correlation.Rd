@@ -94,11 +94,12 @@ it tests only the pairs supplied in \code{candidateEdgeTable}; this mode
 is useful for prior-guided within-omic or cross-omic differential
 correlation testing.
 
-The output is filtered in two stages. First, an edge must have sufficient
-absolute correlation in at least one group. Second, an edge must have a
-sufficiently small adjusted within-group p-value in at least one group.
-The differential p-value is also adjusted and stored in
-\code{adjustedPValue}.
+Adjusted p-values are calculated across the full successfully tested
+edge set before filtering. The output is then filtered in two stages.
+First, an edge must have sufficient absolute correlation in at least one
+group. Second, an edge must have a sufficiently small adjusted
+within-group p-value in at least one group. The differential p-value is
+also adjusted and stored in \code{adjustedPValue}.
 
 \code{createDifferentialCorrelationNetwork()} filters on the adjusted
 differential-correlation p-value and classifies each edge as

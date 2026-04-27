@@ -10,10 +10,10 @@
 #'
 #' - validation of normalized assay inputs
 #' - group-specific correlation networks
-#' - prior-restricted sparse within-omic correlations
-#' - prior-restricted sparse cross-omic correlations
+#' - prior-restricted sparse multi-omic correlations
 #' - Pearson-based differential correlation analysis
 #' - rewiring score calculation
+#' - permutation validation for sparse edges and rewiring scores
 #' - pathway-focused network extraction
 #' - graph creation and Cytoscape-ready export
 #'

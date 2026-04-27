@@ -13,9 +13,10 @@ Description: CorNetto provides a workflow for building knowledge-guided
     multi-omic correlation networks from normalized transcriptomic,
     proteomic, and metabolomic abundance data. The package supports
     group-specific correlation networks, prior-restricted sparse
-    correlations, differential correlation testing, rewiring scores,
-    pathway-focused subnetworks, and graph export for downstream
-    visualization. CorNetto is designed around Bioconductor data
+    multi-omic correlations, differential correlation testing, rewiring
+    scores, permutation validation, pathway-focused subnetworks, and
+    graph export for downstream visualization. CorNetto is designed
+    around Bioconductor data
     containers so that multi-omic assays and sample metadata can be
     managed consistently throughout the analysis workflow.
 License: Artistic-2.0

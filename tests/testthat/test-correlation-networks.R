@@ -45,7 +45,7 @@ test_that("dense correlation networks support all descriptive methods", {
     expect_gt(nrow(getNodeTable(kendallNetwork, fallbackToEdges = FALSE)), 0)
 })
 
-test_that("sparse within-omic and cross-omic correlations use standardized schema", {
+test_that("sparse multi-omic correlations support all, within, and cross scopes", {
     standardColumns <- getFromNamespace(".standardEdgeColumns", "CorNetto")()
     getNodeTable <- getFromNamespace(".getStoredNodeTable", "CorNetto")
     analysisData <- exampleAnalysisData()
@@ -58,18 +58,30 @@ test_that("sparse within-omic and cross-omic correlations use standardized schem
         drop = FALSE
     ]
 
-    sparseWithin <- createSparseWithinOmicCorrelations(
+    sparseAll <- createSparseMultiOmicCorrelations(
         analysisData = analysisData,
         knowledgeNetwork = measuredKnowledgeNetwork,
+        correlationScope = "all",
         groupColumn = "clinicalGroup",
         groupLevel = "Recovered",
         minimumAbsoluteCorrelation = 0,
         adjustedPValueThreshold = 1,
         storeResult = FALSE
     )
-    sparseCross <- createSparseCrossOmicCorrelations(
+    sparseWithin <- createSparseMultiOmicCorrelations(
         analysisData = analysisData,
         knowledgeNetwork = measuredKnowledgeNetwork,
+        correlationScope = "withinOmic",
+        groupColumn = "clinicalGroup",
+        groupLevel = "Recovered",
+        minimumAbsoluteCorrelation = 0,
+        adjustedPValueThreshold = 1,
+        storeResult = FALSE
+    )
+    sparseCross <- createSparseMultiOmicCorrelations(
+        analysisData = analysisData,
+        knowledgeNetwork = measuredKnowledgeNetwork,
+        correlationScope = "crossOmic",
         groupColumn = "clinicalGroup",
         groupLevel = "Recovered",
         minimumAbsoluteCorrelation = 0,
@@ -77,10 +89,14 @@ test_that("sparse within-omic and cross-omic correlations use standardized schem
         storeResult = FALSE
     )
 
+    expect_true(all(standardColumns %in% names(sparseAll)))
     expect_true(all(standardColumns %in% names(sparseWithin)))
     expect_true(all(standardColumns %in% names(sparseCross)))
+    expect_true(any(sparseAll$correlationScope == "sparseWithinOmic"))
+    expect_true(any(sparseAll$correlationScope == "sparseCrossOmic"))
     expect_true(all(sparseWithin$fromAssayName == sparseWithin$toAssayName))
     expect_true(all(sparseCross$fromAssayName != sparseCross$toAssayName))
+    expect_gt(nrow(getNodeTable(sparseAll, fallbackToEdges = FALSE)), 0)
     expect_gt(nrow(getNodeTable(sparseWithin, fallbackToEdges = FALSE)), 0)
     expect_gt(nrow(getNodeTable(sparseCross, fallbackToEdges = FALSE)), 0)
 })
@@ -107,18 +123,10 @@ test_that("combined correlation networks can merge dense and sparse outputs", {
         adjustedPValueThreshold = 1,
         storeResult = FALSE
     )
-    sparseWithin <- createSparseWithinOmicCorrelations(
+    sparseMulti <- createSparseMultiOmicCorrelations(
         analysisData = analysisData,
         knowledgeNetwork = measuredKnowledgeNetwork,
-        groupColumn = "clinicalGroup",
-        groupLevel = "Recovered",
-        minimumAbsoluteCorrelation = 0,
-        adjustedPValueThreshold = 1,
-        storeResult = FALSE
-    )
-    sparseCross <- createSparseCrossOmicCorrelations(
-        analysisData = analysisData,
-        knowledgeNetwork = measuredKnowledgeNetwork,
+        correlationScope = "all",
         groupColumn = "clinicalGroup",
         groupLevel = "Recovered",
         minimumAbsoluteCorrelation = 0,
@@ -126,9 +134,35 @@ test_that("combined correlation networks can merge dense and sparse outputs", {
         storeResult = FALSE
     )
 
-    combined <- combineCorrelationNetworks(dense, sparseWithin, sparseCross)
+    combined <- combineCorrelationNetworks(dense, sparseMulti)
     expect_true(methods::is(combined, "DataFrame"))
     expect_true(all(standardColumns %in% names(combined)))
-    expect_gte(nrow(combined), max(nrow(dense), nrow(sparseWithin), nrow(sparseCross)))
+    expect_gte(nrow(combined), max(nrow(dense), nrow(sparseMulti)))
     expect_gt(nrow(getNodeTable(combined, fallbackToEdges = FALSE)), 0)
+})
+
+test_that("sparse edge permutation validation returns empirical p-values", {
+    analysisData <- exampleAnalysisData()
+    knowledgeNetwork <- exampleKnowledgeNetwork()
+
+    validationTable <- validateSparseCorrelationEdges(
+        analysisData = analysisData,
+        knowledgeNetwork = knowledgeNetwork,
+        correlationScope = "all",
+        groupColumn = "clinicalGroup",
+        groupLevel = "Recovered",
+        nPermutations = 3,
+        seed = 1
+    )
+
+    expect_true(methods::is(validationTable, "DataFrame"))
+    expect_true(all(c(
+        "observedCorrelationValue",
+        "observedAdjustedPValue",
+        "empiricalPValue",
+        "empiricalAdjustedPValue",
+        "nPermutations",
+        "nullModel"
+    ) %in% names(validationTable)))
+    expect_true(all(validationTable$nPermutations == 3))
 })

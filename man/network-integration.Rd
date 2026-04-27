@@ -9,8 +9,7 @@ createIntegratedNetwork(
   analysisData = NULL,
   knowledgeNetwork = NULL,
   correlationNetwork = NULL,
-  sparseWithinOmicCorrelation = NULL,
-  sparseCrossOmicCorrelation = NULL,
+  sparseMultiOmicCorrelation = NULL,
   differentialCorrelationNetwork = NULL,
   includeReverseEdges = TRUE,
   resultName = "integratedNetwork",
@@ -33,8 +32,7 @@ integratedNetworks(analysisData)
   \item{analysisData}{Optional \code{MultiAssayExperiment}. When supplied, stored CorNetto result layers can be retrieved automatically and integrated results can be stored back into metadata.}
   \item{knowledgeNetwork}{Optional standardized knowledge-network edge table or list of edge tables.}
   \item{correlationNetwork}{Optional dense correlation edge table or list of edge tables.}
-  \item{sparseWithinOmicCorrelation}{Optional sparse within-omic correlation edge table or list of edge tables.}
-  \item{sparseCrossOmicCorrelation}{Optional sparse cross-omic correlation edge table or list of edge tables.}
+  \item{sparseMultiOmicCorrelation}{Optional sparse multi-omic correlation edge table or list of edge tables.}
   \item{differentialCorrelationNetwork}{Optional differential-correlation edge table or list of edge tables.}
   \item{includeReverseEdges}{Logical scalar. If \code{TRUE}, undirected edges are duplicated in the reverse direction to support graph traversal and neighbor expansion.}
   \item{resultName}{Character scalar used when storing the integrated network.}

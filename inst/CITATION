@@ -5,5 +5,6 @@ bibentry(
     person(given = "Bradley", family = "Ward")
   ),
   year = "2026",
-  note = "R package version 0.99.0"
+  note = "R package version 0.99.0",
+  url = "https://github.com/bradleyalexward/CorNetto"
 )

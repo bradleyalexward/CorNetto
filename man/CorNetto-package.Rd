@@ -23,11 +23,13 @@ The main workflow is:
   \item build dense within-omic networks with
   \code{createCorrelationNetwork()} or \code{createCorrelationNetworks()};
   \item add prior-guided sparse within-omic or cross-omic correlations
-  with \code{createSparseWithinOmicCorrelations()} and
-  \code{createSparseCrossOmicCorrelations()};
+  with \code{createSparseMultiOmicCorrelations()};
   \item compare two groups with \code{testDifferentialCorrelation()} and
   \code{createDifferentialCorrelationNetwork()};
   \item rank rewired nodes with \code{calculateRewiringScores()};
+  \item validate sparse edges and rewiring scores with
+  \code{validateSparseCorrelationEdges()} and
+  \code{permuteDifferentialRewiring()};
   \item combine static and dynamic layers with
   \code{createIntegratedNetwork()};
   \item extract pathway- or seed-focused subnetworks with
@@ -41,8 +43,10 @@ The main workflow is:
 \code{\link{createAnalysisData}},
 \code{\link{readKnowledgeNetwork}},
 \code{\link{createCorrelationNetwork}},
-\code{\link{createSparseCrossOmicCorrelations}},
+\code{\link{createSparseMultiOmicCorrelations}},
 \code{\link{testDifferentialCorrelation}},
+\code{\link{validateSparseCorrelationEdges}},
+\code{\link{permuteDifferentialRewiring}},
 \code{\link{createIntegratedNetwork}},
 \code{\link{createFocusedNetwork}},
 \code{\link{createNetworkGraph}}

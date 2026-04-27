@@ -2,6 +2,8 @@
 .RData
 .Ruserdata
 .Rproj.user/
+Folder not to be included in final package/
+data-raw/
 *.Rproj
 *.tar.gz
 *.Rcheck/

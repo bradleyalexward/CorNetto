@@ -7,3 +7,9 @@
   workflows, differential correlation testing, rewiring scores, pathway
   subnetworks, graph creation, and Cytoscape-ready export.
 - Added synthetic example assets, tests, and an introductory vignette.
+- Replaced separate sparse within-omic and cross-omic constructors with
+  `createSparseMultiOmicCorrelations()`.
+- Added permutation validation for sparse correlation edges and
+  differential rewiring scores.
+- Adjusted differential-correlation p-values across the full tested
+  edge universe before applying significance filters.

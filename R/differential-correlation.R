@@ -336,30 +336,33 @@
     edgeData$edgeType <- "differentialCorrelation"
     edgeData$edgeDirection <- NA_character_
     edgeData$isDirected <- FALSE
-
-    keepIndex <- !is.na(edgeData$group1CorrelationValue) & !is.na(edgeData$group2CorrelationValue)
-    keepIndex <- keepIndex &
-        (
-            abs(edgeData$group1CorrelationValue) >= minimumAbsoluteCorrelation |
-                abs(edgeData$group2CorrelationValue) >= minimumAbsoluteCorrelation
-        )
-
-    edgeData <- edgeData[keepIndex, , drop = FALSE]
-    if (!nrow(edgeData)) {
-        return(.emptyStandardEdgeTable())
-    }
-
     edgeData$group1AdjustedPValue <- .adjustDifferentialPValues(edgeData$group1PValue, pAdjustMethod)
     edgeData$group2AdjustedPValue <- .adjustDifferentialPValues(edgeData$group2PValue, pAdjustMethod)
-    keepIndex <-
-        (!is.na(edgeData$group1AdjustedPValue) & edgeData$group1AdjustedPValue <= adjustedPValueThreshold) |
-        (!is.na(edgeData$group2AdjustedPValue) & edgeData$group2AdjustedPValue <= adjustedPValueThreshold)
+    edgeData$adjustedPValue <- .adjustDifferentialPValues(edgeData$pValue, pAdjustMethod)
+
+    keepIndex <- !is.na(edgeData$group1CorrelationValue) & !is.na(edgeData$group2CorrelationValue)
+    if (!is.null(minimumAbsoluteCorrelation)) {
+        keepIndex <- keepIndex &
+            (
+            abs(edgeData$group1CorrelationValue) >= minimumAbsoluteCorrelation |
+                abs(edgeData$group2CorrelationValue) >= minimumAbsoluteCorrelation
+            )
+    }
+
     edgeData <- edgeData[keepIndex, , drop = FALSE]
     if (!nrow(edgeData)) {
         return(.emptyStandardEdgeTable())
     }
 
-    edgeData$adjustedPValue <- .adjustDifferentialPValues(edgeData$pValue, pAdjustMethod)
+    if (!is.null(adjustedPValueThreshold)) {
+        keepIndex <-
+            (!is.na(edgeData$group1AdjustedPValue) & edgeData$group1AdjustedPValue <= adjustedPValueThreshold) |
+            (!is.na(edgeData$group2AdjustedPValue) & edgeData$group2AdjustedPValue <= adjustedPValueThreshold)
+        edgeData <- edgeData[keepIndex, , drop = FALSE]
+        if (!nrow(edgeData)) {
+            return(.emptyStandardEdgeTable())
+        }
+    }
 
     .coerceStandardEdgeTable(edgeData)
 }

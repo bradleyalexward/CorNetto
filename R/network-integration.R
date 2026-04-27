@@ -73,8 +73,7 @@
         EXPR = slotName,
         knowledgeNetworks = knowledgeNetworks(analysisData),
         correlationNetworks = correlationNetworks(analysisData),
-        sparseWithinOmicCorrelations = sparseWithinOmicCorrelations(analysisData),
-        sparseCrossOmicCorrelations = sparseCrossOmicCorrelations(analysisData),
+        sparseMultiOmicCorrelations = sparseMultiOmicCorrelations(analysisData),
         differentialCorrelationResults = differentialCorrelationResults(analysisData),
         integratedNetworks = integratedNetworks(analysisData),
         NULL
@@ -92,9 +91,7 @@
 #' @param knowledgeNetwork Optional knowledge-network edge table or list.
 #' @param correlationNetwork Optional dense correlation edge table or
 #'   list.
-#' @param sparseWithinOmicCorrelation Optional sparse within-omic edge
-#'   table or list.
-#' @param sparseCrossOmicCorrelation Optional sparse cross-omic edge
+#' @param sparseMultiOmicCorrelation Optional sparse multi-omic edge
 #'   table or list.
 #' @param differentialCorrelationNetwork Optional differential
 #'   correlation edge table or list.
@@ -110,8 +107,7 @@ createIntegratedNetwork <- function(
     analysisData = NULL,
     knowledgeNetwork = NULL,
     correlationNetwork = NULL,
-    sparseWithinOmicCorrelation = NULL,
-    sparseCrossOmicCorrelation = NULL,
+    sparseMultiOmicCorrelation = NULL,
     differentialCorrelationNetwork = NULL,
     includeReverseEdges = TRUE,
     resultName = "integratedNetwork",
@@ -124,8 +120,7 @@ createIntegratedNetwork <- function(
     edgeInputs <- c(
         .flattenEdgeTables(.resolveStoredOrSuppliedEdges(analysisData, knowledgeNetwork, "knowledgeNetworks")),
         .flattenEdgeTables(.resolveStoredOrSuppliedEdges(analysisData, correlationNetwork, "correlationNetworks")),
-        .flattenEdgeTables(.resolveStoredOrSuppliedEdges(analysisData, sparseWithinOmicCorrelation, "sparseWithinOmicCorrelations")),
-        .flattenEdgeTables(.resolveStoredOrSuppliedEdges(analysisData, sparseCrossOmicCorrelation, "sparseCrossOmicCorrelations")),
+        .flattenEdgeTables(.resolveStoredOrSuppliedEdges(analysisData, sparseMultiOmicCorrelation, "sparseMultiOmicCorrelations")),
         .flattenEdgeTables(.resolveStoredOrSuppliedEdges(analysisData, differentialCorrelationNetwork, "differentialCorrelationResults"))
     )
     edgeInputs <- Filter(Negate(is.null), edgeInputs)

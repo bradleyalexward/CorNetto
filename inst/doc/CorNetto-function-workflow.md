@@ -19,20 +19,19 @@ flowchart TD
 
     D --> I["createCorrelationNetwork()"]
     D --> J["createCorrelationNetworks()"]
-    H --> K["createSparseWithinOmicCorrelations()"]
-    H --> L["createSparseCrossOmicCorrelations()"]
+    H --> K["createSparseMultiOmicCorrelations()"]
     C --> K
-    C --> L
 
     I --> M["combineCorrelationNetworks() optional"]
     J --> M
     K --> M
-    L --> M
 
     C --> N["testDifferentialCorrelation()"]
     H --> N
     N --> O["createDifferentialCorrelationNetwork()"]
     O --> P["calculateRewiringScores()"]
+    K --> X["validateSparseCorrelationEdges() optional"]
+    P --> Y["permuteDifferentialRewiring() optional"]
 
     H --> Q["createIntegratedNetwork()"]
     M --> Q
@@ -51,10 +50,10 @@ flowchart TD
     W --> W1["corNettoResults()"]
     W --> W2["knowledgeNetworks()"]
     W --> W3["correlationNetworks()"]
-    W --> W4["sparseWithinOmicCorrelations()"]
-    W --> W5["sparseCrossOmicCorrelations()"]
-    W --> W6["differentialCorrelationResults()"]
-    W --> W7["rewiringResults()"]
+    W --> W4["sparseMultiOmicCorrelations()"]
+    W --> W5["differentialCorrelationResults()"]
+    W --> W6["rewiringResults()"]
+    W --> W7["validationResults()"]
     W --> W8["integratedNetworks()"]
 ```
 
@@ -72,12 +71,13 @@ flowchart TD
 | `combineKnowledgeNetworks()` | One or more prior-network tables | Standardized edge `DataFrame` | Merges prior sources such as PPI, TF-target, RNA-protein, and protein-metabolite networks. |
 | `createCorrelationNetwork()` | One assay and one sample group | Standardized edge `DataFrame` | Computes dense within-omic correlations for one assay-group combination. |
 | `createCorrelationNetworks()` | Multiple assays and groups | Named list or stored results | Runs dense within-omic correlation construction across assays and groups. |
-| `createSparseWithinOmicCorrelations()` | Analysis object and within-omic priors | Standardized edge `DataFrame` | Computes correlations only for prior-supported feature pairs within the same assay. |
-| `createSparseCrossOmicCorrelations()` | Analysis object and cross-omic priors | Standardized edge `DataFrame` | Computes correlations only for prior-supported feature pairs across assays. |
+| `createSparseMultiOmicCorrelations()` | Analysis object and prior network | Standardized edge `DataFrame` | Computes correlations only for prior-supported feature pairs, with scope set to all, within-omic, or cross-omic candidate edges. |
 | `combineCorrelationNetworks()` | Dense and sparse dynamic edge tables | Standardized edge `DataFrame` | Merges compatible dynamic correlation layers for integration. |
 | `testDifferentialCorrelation()` | Analysis object and two group labels | Standardized edge `DataFrame` | Tests whether correlations differ between two groups for all pairs or candidate prior-supported pairs. |
 | `createDifferentialCorrelationNetwork()` | Differential-correlation test table | Standardized edge `DataFrame` | Filters differential results, assigns rewiring labels, and creates weighted differential edges. |
 | `calculateRewiringScores()` | Differential-correlation network | Node-level `DataFrame` | Calculates raw, root-mean-square, and degree-matched node rewiring scores. |
+| `validateSparseCorrelationEdges()` | Analysis object and prior network | Validation `DataFrame` | Estimates empirical sparse-edge p-values by permuting sample alignment before recomputing correlations. |
+| `permuteDifferentialRewiring()` | Analysis object and two group labels | Validation result list | Estimates empirical rewiring p-values by permuting group labels and rerunning the differential-correlation workflow. |
 | `createIntegratedNetwork()` | Prior, correlation, sparse, and differential layers | Standardized edge `DataFrame` | Merges static knowledge and dynamic edge layers into one multi-omic network. |
 | `filterNetworkByNodes()` | Edge table and node identifiers | Standardized edge `DataFrame` | Keeps edges touching selected nodes or edges internal to a node set. |
 | `createFocusedNetwork()` | Edge table and seed nodes | Standardized edge `DataFrame` | Builds a neighborhood-induced subnetwork around pathway or feature seed nodes. |
@@ -91,10 +91,10 @@ flowchart TD
 | `corNettoResults()` | `MultiAssayExperiment` | CorNetto metadata store | Returns all stored CorNetto result lists. |
 | `knowledgeNetworks()` | `MultiAssayExperiment` | Stored knowledge networks | Accessor for stored prior-network results. |
 | `correlationNetworks()` | `MultiAssayExperiment` | Stored dense or combined correlation networks | Accessor for stored dense or combined correlation-network results. |
-| `sparseWithinOmicCorrelations()` | `MultiAssayExperiment` | Stored sparse within-omic networks | Accessor for stored sparse within-omic correlation results. |
-| `sparseCrossOmicCorrelations()` | `MultiAssayExperiment` | Stored sparse cross-omic networks | Accessor for stored sparse cross-omic correlation results. |
+| `sparseMultiOmicCorrelations()` | `MultiAssayExperiment` | Stored sparse multi-omic networks | Accessor for stored sparse multi-omic correlation results. |
 | `differentialCorrelationResults()` | `MultiAssayExperiment` | Stored differential-correlation results | Accessor for stored differential-correlation test results. |
 | `rewiringResults()` | `MultiAssayExperiment` | Stored rewiring results | Accessor for stored node-level rewiring scores. |
+| `validationResults()` | `MultiAssayExperiment` | Stored validation results | Accessor for stored permutation-validation outputs. |
 | `integratedNetworks()` | `MultiAssayExperiment` | Stored integrated networks | Accessor for stored integrated multi-omic networks. |
 
 ## Typical Branch Points
@@ -102,16 +102,20 @@ flowchart TD
 Use dense correlations when the assay has a manageable number of
 features and an exploratory within-omic network is useful.
 
-Use sparse within-omic correlations when an assay is large or when only
-prior-supported within-assay edges should be tested.
-
-Use sparse cross-omic correlations for multi-omic dynamic edges. This is
-the recommended cross-omic route because it avoids exhaustive all by all
-testing between assays.
+Use sparse multi-omic correlations when an assay is large, when only
+prior-supported within-assay edges should be tested, or when cross-omic
+dynamic edges should be constrained by prior knowledge. Use
+`correlationScope = "withinOmic"` or `"crossOmic"` when the analysis
+should be restricted to one candidate-edge class.
 
 Use `candidateEdgeTable` in `testDifferentialCorrelation()` when the
 differential question should be restricted to prior-supported edges or to
 edges already identified in a previous analysis step.
+
+Use `validateSparseCorrelationEdges()` when edge-level empirical
+significance is required, and `permuteDifferentialRewiring()` when
+node-level rewiring scores need empirical p-values from group-label
+permutation.
 
 Use `filterNetworkByNodes()` for direct node-set filtering, and
 `createFocusedNetwork()` when first- or second-neighbor expansion around
