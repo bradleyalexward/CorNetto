@@ -1,4 +1,5 @@
 # CorNetto
+[![DOI](https://zenodo.org/badge/1216049833.svg)](https://doi.org/10.5281/zenodo.19815672)
 
 CorNetto is a Bioconductor-style R package for knowledge-guided
 multi-omic correlation network analysis. It is designed for normalized
