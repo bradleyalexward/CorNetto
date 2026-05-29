@@ -18,15 +18,6 @@ The first package version focuses on:
 
 ## Installation
 
-After CorNetto is accepted by Bioconductor, install it with:
-
-```r
-if (!requireNamespace("BiocManager", quietly = TRUE)) {
-    install.packages("BiocManager")
-}
-BiocManager::install("CorNetto")
-```
-
 Before Bioconductor acceptance, install the development version from GitHub:
 
 ```r
