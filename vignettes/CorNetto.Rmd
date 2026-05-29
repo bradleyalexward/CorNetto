@@ -1,0 +1,273 @@
+---
+title: "CorNetto Workflow"
+author: "Bradley Ward"
+date: "2026-05-19"
+output:
+  BiocStyle::html_document:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{CorNetto Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(CorNetto)
+```
+
+# Introduction
+
+CorNetto builds knowledge-guided multi-omic correlation networks from
+normalized assay data stored in a `MultiAssayExperiment`. It is intended
+for workflows where transcriptomic, proteomic, metabolomic, or related
+assays are already normalized and the analysis question is whether
+groups differ in correlation structure, prior-supported connectivity, or
+node-level rewiring.
+
+The package uses standard Bioconductor containers for assay and sample
+metadata, and returns standardized edge tables that can be combined,
+converted to `igraph` objects, or exported as Cytoscape-ready node and
+edge tables.
+
+CorNetto is not a normalization, differential abundance, or de novo
+network-inference package. Instead, it occupies the downstream analysis
+stage after assay-level preprocessing by reusing Bioconductor containers
+and established infrastructure such as `DGCA` for dense differential
+correlation testing and `igraph` for graph representation. The package
+adds the glue needed for prior-guided candidate-edge differential
+correlation, knowledge-network-aware integration, focused subnetworks,
+and rewiring summaries in a single reproducible workflow.
+
+# Version information
+
+```{r version-information}
+c(
+    R = R.version.string,
+    Bioconductor = as.character(BiocManager::version()),
+    CorNetto = as.character(utils::packageVersion("CorNetto"))
+)
+```
+
+# Installation
+
+After acceptance to Bioconductor, install CorNetto with:
+
+```{r install, eval = FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+BiocManager::install("CorNetto")
+```
+
+# Example data
+
+```{r load-data}
+analysisData <- exampleAnalysisData()
+knowledgeNetwork <- exampleKnowledgeNetwork()
+seedNodes <- exampleSeedNodes()
+
+analysisData
+summarizeAnalysisData(analysisData, groupColumn = "clinicalGroup", quiet = TRUE)
+head(knowledgeNetwork)
+seedNodes
+```
+
+The synthetic example contains three assays named `protein`,
+`transcript`, and `metabolite`. The example prior network also contains a
+drug-target edge to demonstrate that prior networks can include static
+knowledge beyond the measured assays. Prior-guided candidate-edge
+analyses must therefore be given only prior edges whose assay names are
+present in the analysis object.
+
+```{r measured-priors}
+measuredAssays <- c("protein", "transcript", "metabolite")
+measuredKnowledgeNetwork <- knowledgeNetwork[
+    knowledgeNetwork$fromAssayName %in% measuredAssays &
+        knowledgeNetwork$toAssayName %in% measuredAssays,
+    ,
+    drop = FALSE
+]
+```
+
+# Dense group-specific correlations
+
+`createCorrelationNetwork()` computes all pairwise within-omic
+correlations for one assay and one group. Dense all-pairs mode is
+intended for small-to-medium assays; for large assays, prefer
+prior-guided candidate-edge testing when suitable.
+
+```{r dense-correlations}
+recoveredProteinNetwork <- createCorrelationNetwork(
+    analysisData = analysisData,
+    assayName = "protein",
+    groupColumn = "clinicalGroup",
+    groupLevel = "Recovered",
+    correlationMethod = "pearson",
+    minimumAbsoluteCorrelation = 0,
+    adjustedPValueThreshold = 1,
+    pAdjustMethod = "fdr",
+    storeResult = FALSE
+)
+
+head(recoveredProteinNetwork)
+```
+
+# Prior-guided sparse differential correlation
+
+`testDifferentialCorrelation()` can test only feature pairs supported by
+a prior network when `candidateEdgeTable` is supplied. This is the sparse
+mode for differential correlation: it avoids exhaustive cross-omic
+testing and keeps the dynamic network aligned to interpretable prior
+knowledge.
+
+```{r prior-guided-differential}
+priorGuidedDifferentialResults <- testDifferentialCorrelation(
+    analysisData = analysisData,
+    candidateEdgeTable = measuredKnowledgeNetwork,
+    groupColumn = "clinicalGroup",
+    groupLevels = c("PASC", "Recovered"),
+    minimumAbsoluteCorrelation = 0,
+    adjustedPValueThreshold = 1,
+    pAdjustMethod = "fdr",
+    storeResult = FALSE
+)
+
+priorGuidedDifferentialNetwork <- createDifferentialCorrelationNetwork(
+    differentialCorrelationTable = priorGuidedDifferentialResults,
+    differenceAdjustedPValueThreshold = 1,
+    minimumAbsoluteCorrelation = 0
+)
+
+c(nrow(priorGuidedDifferentialResults), nrow(priorGuidedDifferentialNetwork))
+```
+
+# Permutation validation
+
+`permuteRewiringScores()` permutes group labels and reruns the
+differential-correlation workflow to validate node-level rewiring
+scores.
+
+```{r permutation-validation}
+rewiringValidation <- permuteRewiringScores(
+    analysisData = analysisData,
+    candidateEdgeTable = measuredKnowledgeNetwork,
+    groupColumn = "clinicalGroup",
+    groupLevels = c("PASC", "Recovered"),
+    minimumAbsoluteCorrelation = 0,
+    adjustedPValueThreshold = 1,
+    differenceAdjustedPValueThreshold = 1,
+    pAdjustMethod = "fdr",
+    nPermutations = 2,
+    seed = 1
+)
+
+head(rewiringValidation$rewiringTable)
+```
+
+# Differential correlation and rewiring
+
+`testDifferentialCorrelation()` compares correlation coefficients between
+two groups. `createDifferentialCorrelationNetwork()` converts the test
+results to a weighted network, and `calculateRewiringScores()` summarizes
+node-level rewiring.
+
+```{r differential-correlation}
+differentialResults <- testDifferentialCorrelation(
+    analysisData = analysisData,
+    groupColumn = "clinicalGroup",
+    groupLevels = c("PASC", "Recovered"),
+    assayName = "protein",
+    correlationMethod = "pearson",
+    minimumAbsoluteCorrelation = 0,
+    adjustedPValueThreshold = 1,
+    pAdjustMethod = "fdr",
+    storeResult = FALSE
+)
+
+differentialNetwork <- createDifferentialCorrelationNetwork(
+    differentialCorrelationTable = differentialResults,
+    differenceAdjustedPValueThreshold = 1,
+    minimumAbsoluteCorrelation = 0
+)
+
+rewiringScores <- calculateRewiringScores(
+    differentialCorrelationNetwork = differentialNetwork,
+    storeResult = FALSE
+)
+
+head(rewiringScores)
+```
+
+# Integrated and focused network
+
+`combineNetworks()` merges static prior knowledge,
+group-specific correlation layers, and differential-correlation layers.
+`createFocusedNetwork()` extracts a seed-centered neighborhood, which is
+useful for pathway-driven analyses.
+
+```{r integrated-network}
+integratedNetwork <- combineNetworks(
+    knowledgeNetwork = knowledgeNetwork,
+    correlationNetwork = recoveredProteinNetwork,
+    differentialCorrelationNetwork = list(
+        priorGuidedDifferentialNetwork,
+        differentialNetwork
+    ),
+    includeReverseEdges = TRUE
+)
+
+focusedNetwork <- createFocusedNetwork(
+    networkEdgeTable = integratedNetwork,
+    seedNodes = seedNodes,
+    neighborhoodOrder = 1
+)
+
+cytoscapeTables <- prepareCytoscapeTables(
+    networkEdgeTable = focusedNetwork,
+    rewiringTable = rewiringScores
+)
+
+names(cytoscapeTables)
+nrow(cytoscapeTables$nodes)
+nrow(cytoscapeTables$edges)
+```
+
+# Graph creation
+
+`createNetworkGraph()` converts a standardized CorNetto edge table to an
+`igraph` object. Plotting can then use standard igraph methods.
+
+```{r graph-plot, fig.width = 8, fig.height = 6}
+graphObject <- createNetworkGraph(focusedNetwork)
+plot(
+    graphObject,
+    layout = igraph::layout_with_fr(graphObject),
+    vertex.label = NA,
+    vertex.size = 8,
+    edge.width = 1,
+    main = "Example focused CorNetto network"
+)
+```
+
+# Export
+
+Use `writeNetworkTables()` when Cytoscape-ready files are needed. The
+example writes to a temporary directory.
+
+```{r export}
+writtenFiles <- writeNetworkTables(
+    networkTables = cytoscapeTables,
+    directoryPath = tempdir(),
+    prefix = "cornettoExample",
+    fileFormat = "tsv"
+)
+
+basename(writtenFiles)
+```
+
+# Session information
+
+```{r session-info}
+sessionInfo()
+```

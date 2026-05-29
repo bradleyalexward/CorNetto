@@ -1,0 +1,424 @@
+---
+title: "CorNetto COVID-19 Severity Workflow"
+author: "Bradley Ward"
+date: "`r Sys.Date()`"
+output:
+  BiocStyle::html_document:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{CorNetto COVID Severity Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(CorNetto)
+extdataDir <- system.file("extdata", package = "CorNetto")
+```
+
+# Introduction
+
+CorNetto builds knowledge-guided multi-omic correlation networks from
+normalized assay data stored in a `MultiAssayExperiment`. It is intended
+for workflows where transcriptomic, proteomic, metabolomic, or related
+assays are already normalized and the analysis question is whether groups
+differ in correlation structure, prior-supported connectivity, or
+node-level rewiring.
+
+The package uses standard Bioconductor containers for assay and sample
+metadata, and returns standardized edge tables that can be combined,
+converted to `igraph` objects, or exported as Cytoscape-ready node and
+edge tables.
+
+This vignette uses a small packaged subset of proteomic, transcriptomic,
+and metabolomic data from moderate and severe COVID-19 patients. The subset
+is intended to demonstrate the workflow during package checks; it is not
+sized for biological discovery. The workflow first creates a prior knowledge
+interactome, maps prior-guided differential correlations onto this structure,
+and calculates node rewiring scores.
+
+Because the sparse workflow uses a prior knowledge network to constrain
+correlation calculations, it can demonstrate multi-omic network analysis
+without running dense all-pairs correlations.
+
+# Version information
+
+```{r version-information}
+c(
+    R = R.version.string,
+    Bioconductor = as.character(BiocManager::version()),
+    CorNetto = as.character(utils::packageVersion("CorNetto"))
+)
+```
+
+# Installation
+
+After acceptance to Bioconductor, install CorNetto with:
+
+```{r install, eval = FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+BiocManager::install("CorNetto")
+```
+
+# Import prior knowledge networks into the environment
+
+CorNetto is able to accept any kind of prior knowledge networks provided the 
+columns can be mapped correctly from the data provided.
+
+`readKnowledgeNetwork()` function takes a delimited table, optionally remaps
+the input column names to a common convention, and standardizes it for downstream
+CorNetto functions. The minimum columns required are `fromFeatureIdentifier`, 
+`toFeatureIdentifier`, `fromAssayName `, and `toAssayName`. Other columns are 
+optional but can be useful. The output is a standardized S4Vectors DFrame.
+
+`combineKnowledgeNetworks()` takes these standardized networks and combines their rows while removing duplicate edges (optional).
+
+```{r load prior data}
+
+#Set column mapping
+priorColumnMap <- c(
+    fromFeatureIdentifier = "from",
+    toFeatureIdentifier = "to",
+    fromFeatureName = "fromName",
+    toFeatureName = "toName",
+    fromAssayName = "fromOmic",
+    toAssayName = "toOmic",
+    edgeType = "edgeType",
+    edgeDirection = "edgeDirection",
+    evidenceScore = "edgeWeight"
+)
+#Import prior data
+stringNetwork <- readKnowledgeNetwork(filePath = file.path(extdataDir,
+                                                           "priorNetworks",
+                                                           "string.csv"),
+                                      columnMapping = priorColumnMap,
+                                      knowledgeSource = "STRING")
+
+tfNetwork <- readKnowledgeNetwork(filePath = file.path(extdataDir,
+                                                       "priorNetworks",
+                                                       "ttrust.csv"),
+                                      columnMapping = priorColumnMap,
+                                      knowledgeSource = "TRRUST")
+
+mirnaNetwork <- readKnowledgeNetwork(filePath = file.path(extdataDir,
+                                                          "priorNetworks",
+                                                          "tarbase.csv"),
+                                      columnMapping = priorColumnMap,
+                                      knowledgeSource = "TarBase")
+
+rnaProteinNetwork  <- readKnowledgeNetwork(filePath = file.path(extdataDir,
+                                                                "priorNetworks",
+                                                                "translation.csv"),
+                                      columnMapping = priorColumnMap,
+                                      knowledgeSource = "RNA_to_protein")
+
+dnaRnaNetwork  <- readKnowledgeNetwork(filePath = file.path(extdataDir,
+                                                            "priorNetworks",
+                                                            "transcription.csv"),
+                                      columnMapping = priorColumnMap,
+                                      knowledgeSource = "DNA_to_RNA")
+
+metaboliteProteinNetwork <- readKnowledgeNetwork(filePath = file.path(extdataDir,
+                                                                      "priorNetworks",
+                                                                      "kegg_recon3D.csv"),
+                                                 columnMapping = priorColumnMap,
+                                                 knowledgeSource = "KEGG_Recon3D")
+#Combine networks
+combinedPriorNetwork <- combineKnowledgeNetworks(stringNetwork,
+                                                 tfNetwork,
+                                                 mirnaNetwork,
+                                                 rnaProteinNetwork,
+                                                 dnaRnaNetwork,
+                                                 metaboliteProteinNetwork,
+                                                 removeDuplicates = TRUE)
+```
+
+# Import experimental abundance data into the environment
+
+Currently CorNetto is able to accept any normalised and fully preprocessed 
+abundance or count matrix relating to proteomics, transcriptomics, or metabolomics.
+
+`createAnalysisData()` creates a MultiAssayExperiment from these normalized assay objects and sample metadata. 
+
+`filterSamples()` filters the MultiAssayExperiment based on a group column and a range of values.
+
+```{r load experimental data}
+#Import patient data
+patientInformation <- read.csv(file.path(extdataDir,
+                                         "covidData",
+                                         "patientInformation.csv"))
+rownames(patientInformation) <- patientInformation$Visit_ID
+
+#Import omics data
+dataList <- list(RNA = read.csv(file.path(extdataDir,
+                                          "covidData",
+                                          "rnaMatrix.csv"),
+                                row.names = 1),
+                 Protein  = read.csv(file.path(extdataDir,
+                                               "covidData",
+                                               "proteinMatrix.csv"),
+                                     row.names = 1),
+                 Metabolite  = read.csv(file.path(extdataDir,
+                                                  "covidData",
+                                                  "metaboliteMatrix.csv"),
+                                        row.names = 1))
+
+#Create analysis data
+analysisData <- createAnalysisData(assayList = dataList,
+                                   sampleData = patientInformation)
+
+#Filter data for only COVID-19 patients at visit 1
+analysisCovid <- filterSamples(analysisData,
+                               groupColumn = "Group",
+                               groupLevels = c("COVID Severe",
+                                               "COVID Moderate"))
+analysisCovid <- filterSamples(analysisCovid,
+                               groupColumn = "Visit",
+                               groupLevels = "Visit 1")
+```
+
+# QC checks of all imported objects
+
+Following data importation, objects can be checked for structural conformity and
+diagnostic summaries.
+
+`validateAnalysisData()` checks the CorNetto analysis object for structural conformity, specifically:
+
+* is this a MultiAssayExperiment?
+* does it contain assays?
+* are sample identifiers valid and unique?
+* are assay columns matched to colData?
+* are feature/sample names present and non-duplicated?
+* are assays extractable as numeric matrices?
+* are required feature metadata fields present?
+
+`validateKnowledgeNetwork()` checks the CorNetto prior-knowledge edge table
+for structural conformity, specifically:
+
+* is this a data frame-like edge table?
+* are the required edge columns present?
+* are source and target feature identifiers present?
+* are source and target assay names present?
+* are missing optional columns filled with standard defaults?
+* are edge type, edge direction, and knowledge source represented consistently?
+* is the network converted to the standardized CorNetto edge-table format?
+
+These functions also run quietly after most CorNetto functions to ensure
+conformity of output.
+
+```{r validateAnalysisData}
+#Check analysis data
+analysisCovid <- validateAnalysisData(analysisCovid)
+#Check knowledge networks
+combinedPriorNetwork <- validateKnowledgeNetwork(combinedPriorNetwork)
+```
+
+`summarizeAnalysisData()` asks "what does this analysis object look like,
+and are there analysis risks?" rather than only asking whether the object
+is structurally valid.
+```{r summarizeAnalysisData}
+summarizeAnalysisData(analysisCovid,
+                      groupColumn = "Group")
+```
+
+The output reports the number of features per assay, the number of samples
+per assay, and the number of samples in each selected group. In this small
+packaged example there are 12 moderate COVID-19 samples and 12 severe
+COVID-19 samples.
+
+Zero-variance and near-zero-variance features should be removed before
+correlation analysis. These can be removed with `removeZeroVariance = TRUE`
+and `minimumVariance` in `filterFeatures()`.
+
+```{r filterFeatures}
+analysisCovid <- filterFeatures(
+    analysisCovid,
+    removeZeroVariance = TRUE,
+    minimumVariance = 0.01
+)
+
+summarizeAnalysisData(analysisCovid)
+```
+
+For the sparse workflow, candidate edges are restricted to prior-network
+edges whose endpoint features remain in the filtered analysis object.
+This keeps the example fast and makes the tested edge universe explicit.
+
+```{r restrict-prior-network}
+measuredNodeKeys <- unlist(
+    lapply(
+        names(MultiAssayExperiment::experiments(analysisCovid)),
+        function(assayName) {
+            assayObject <- MultiAssayExperiment::experiments(analysisCovid)[[assayName]]
+            paste(
+                assayName,
+                rownames(SummarizedExperiment::assay(assayObject)),
+                sep = "::"
+            )
+        }
+    ),
+    use.names = FALSE
+)
+
+measuredPriorNetwork <- filterNetworkByNodes(
+    combinedPriorNetwork,
+    nodes = measuredNodeKeys,
+    mode = "both",
+    nodeIdType = "key"
+)
+
+summarizeKnowledgeNetwork(measuredPriorNetwork, analysisCovid)
+```
+
+# Run prior-guided differential correlations
+
+The main function for testing differential correlations between groups is 
+`testDifferentialCorrelation`. Here we are testing differential correlations
+for all the multi-omic candidate edges supported within our prior knowledge 
+networks (edges to test supplied to the `candidateEdgeTable` argument).
+
+The differential correlation result is added to `analysisCovid`, then
+extracted with `differentialCorrelationResults()`. Alternatively,
+`testDifferentialCorrelation()` can directly return the table with
+`storeResult = FALSE`.
+```{r testDifferentialCorrelation}
+analysisCovid <- testDifferentialCorrelation(
+    analysisData = analysisCovid,
+    groupColumn = "Group",
+    groupLevels = c("COVID Moderate", "COVID Severe"),
+    candidateEdgeTable = measuredPriorNetwork,
+    correlationMethod = "pearson",
+    minimumAbsoluteCorrelation = 0.3,
+    adjustedPValueThreshold = 0.05,
+    pAdjustMethod = "fdr",
+    resultName = "differentialSparseCorrelations"
+)
+
+differentialSparseCorrelations <-
+    differentialCorrelationResults(analysisCovid)[["differentialSparseCorrelations"]]
+
+as.data.frame(differentialSparseCorrelations)
+
+```
+
+# Build differential network.
+
+The next step builds a differential correlation network from the
+`differentialSparseCorrelations` table. The function returns the network
+directly unless `storeResult = TRUE`, in which case `analysisData` and
+`resultName` are supplied.
+
+Here the resulting network is not filtered further. In a real analysis,
+`minimumAbsoluteCorrelation` and `differenceAdjustedPValueThreshold` can
+be tightened to remove weakly correlated or non-significant edges.
+```{r}
+analysisCovid <- createDifferentialCorrelationNetwork(
+    differentialCorrelationTable = differentialSparseCorrelations,
+    differenceAdjustedPValueThreshold = 1,
+    minimumAbsoluteCorrelation = 0,
+    edgeWeightMethod = "absoluteZScore",
+    analysisData = analysisCovid,
+    resultName = "differentialSparseNetwork",
+    storeResult = TRUE)
+
+differentialSparseNetwork <-
+    differentialCorrelationNetworks(analysisCovid)[["differentialSparseNetwork"]]
+
+as.data.frame(differentialSparseNetwork)
+
+```
+
+# Calculate rewiring scores.
+
+Rewiring scores summarize the amount of differential-correlation signal
+incident on each node in the differential network. Here the rewiring table
+is stored in `analysisCovid` and extracted with `rewiringResults()`.
+
+```{r calculateRewiringScores}
+analysisCovid <- calculateRewiringScores(
+    differentialCorrelationNetwork = differentialSparseNetwork,
+    analysisData = analysisCovid,
+    resultName = "differentialSparseRewiring",
+    storeResult = TRUE
+)
+
+rewiringScores <- rewiringResults(analysisCovid)[["differentialSparseRewiring"]]
+
+rewiringScores <- rewiringScores[
+    order(rewiringScores$degreeMatchedZScore, decreasing = TRUE),
+]
+
+head(rewiringScores, 20)
+```
+
+# Run permutation validation.
+
+`permuteRewiringScores()` permutes the supplied group labels, reruns the
+differential correlation testing, rebuilds the networks, and calculates
+empirical node-level rewiring p-values. This vignette uses only two
+permutations so that package checks run quickly; real analyses should use
+many more permutations.
+
+```{r}
+analysisCovid <- permuteRewiringScores(
+    analysisData = analysisCovid,
+    groupColumn = "Group",
+    groupLevels = c("COVID Moderate", "COVID Severe"),
+    candidateEdgeTable = measuredPriorNetwork,
+    correlationMethod = "pearson",
+    minimumAbsoluteCorrelation = 0.3,
+    adjustedPValueThreshold = 0.05,
+    pAdjustMethod = "fdr",
+    differenceAdjustedPValueThreshold = 1,
+    edgeWeightMethod = "absoluteZScore",
+    scoreColumn = "rawRewiringScore",
+    nPermutations = 2,
+    seed = 1,
+    keepPermutationScores = TRUE,
+    resultName = "differentialSparseRewiringPermutation",
+    storeResult = TRUE)
+
+
+rewiringPermutation <-
+    validationResults(analysisCovid)[["differentialSparseRewiringPermutation"]]
+
+validatedRewiring <- rewiringPermutation$rewiringTable
+validatedRewiring <- validatedRewiring[order(validatedRewiring$empiricalAdjustedPValue,
+                                             -validatedRewiring$rawRewiringScore,
+                                             na.last = TRUE),
+                                       ]
+
+head(validatedRewiring, 20)
+
+```
+
+# Result export
+
+Once results are generated, the network and node rewiring scores can be
+supplied to `prepareCytoscapeTables()` to create tables that can be
+imported into Cytoscape for further network analysis.
+
+`writeNetworkTables()` writes the node and edge tables to a specified
+directory. The vignette writes to `tempdir()` so package checks do not
+write into the user's working directory.
+
+```{r}
+cytoscapeTables <- prepareCytoscapeTables(networkEdgeTable = differentialSparseNetwork,
+                                          rewiringTable = validatedRewiring)
+
+writeNetworkTables(cytoscapeTables,
+                   directoryPath = file.path(tempdir(),
+                                             "cornettoCovidSeverityNetwork"),
+                   prefix = "covidModerateVsSevere",
+                   fileFormat = "csv")
+```
+
+# Session information
+
+```{r session-info}
+sessionInfo()
+```
+

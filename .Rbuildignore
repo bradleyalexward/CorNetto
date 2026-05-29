@@ -1,0 +1,13 @@
+^Folder not to be included in final package$
+^data-raw$
+^README\.md$
+^\.github$
+^CITATION\.cff$
+^\.git$
+^\.Rhistory$
+^\.RData$
+^\.Rproj\.user$
+^.*\.Rproj$
+^CorNetto\.Rcheck$
+^CorNetto_[0-9.]+\.tar\.gz$
+^CorNetto\.BiocCheck$
