@@ -30,14 +30,12 @@ metadata, and returns standardized edge tables that can be combined,
 converted to `igraph` objects, or exported as Cytoscape-ready node and
 edge tables.
 
-CorNetto is not a normalization, differential abundance, or de novo
-network-inference package. Instead, it occupies the downstream analysis
-stage after assay-level preprocessing by reusing Bioconductor containers
-and established infrastructure such as `DGCA` for dense differential
-correlation testing and `igraph` for graph representation. The package
-adds the glue needed for prior-guided candidate-edge differential
-correlation, knowledge-network-aware integration, focused subnetworks,
-and rewiring summaries in a single reproducible workflow.
+CorNetto is for downstream analysis after assay-level preprocessing 
+by reusing Bioconductor containers and established infrastructure such 
+as `DGCA` for dense differentialcorrelation testing and `igraph` for 
+graph representation. The packageadds the glue needed for prior-guided 
+candidate-edge differential correlation, knowledge-network-aware integration, 
+focused subnetworks, and rewiring summaries in a single reproducible workflow.
 
 # Version information
 
