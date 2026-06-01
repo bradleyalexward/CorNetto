@@ -76,6 +76,26 @@
     )
 }
 
+.resolveAssayFilterArgument <- function(argumentValue, assayName, default = NULL) {
+    if (is.null(argumentValue)) {
+        return(default)
+    }
+
+    if (is.list(argumentValue) &&
+        !is.data.frame(argumentValue) &&
+        !methods::is(argumentValue, "DataFrame")) {
+        if (is.null(names(argumentValue)) || any(!nzchar(names(argumentValue)))) {
+            stop("Assay-specific filter arguments must be named lists.", call. = FALSE)
+        }
+        if (assayName %in% names(argumentValue)) {
+            return(argumentValue[[assayName]])
+        }
+        return(default)
+    }
+
+    argumentValue
+}
+
 #' Create a CorNetto Analysis Object
 #'
 #' Create a `MultiAssayExperiment` from normalized assay objects and
@@ -595,10 +615,11 @@ filterFeatures <- function(
         assayMatrix <- .extractAssayMatrix(analysisData, assayName)
         keepFeatures <- rownames(assayMatrix)
 
-        assayFeatureSubset <- featureSubset
-        if (is.list(featureSubset) && !is.null(featureSubset[[assayName]])) {
-            assayFeatureSubset <- featureSubset[[assayName]]
-        }
+        assayFeatureSubset <- .resolveAssayFilterArgument(
+            argumentValue = featureSubset,
+            assayName = assayName,
+            default = NULL
+        )
         if (!is.null(assayFeatureSubset)) {
             keepFeatures <- intersect(
                 keepFeatures,
@@ -606,13 +627,11 @@ filterFeatures <- function(
             )
         }
 
-        assayRemoveZeroVariance <- removeZeroVariance
-        if (is.list(removeZeroVariance)) {
-            assayRemoveZeroVariance <- FALSE
-            if (!is.null(removeZeroVariance[[assayName]])) {
-                assayRemoveZeroVariance <- removeZeroVariance[[assayName]]
-            }
-        }
+        assayRemoveZeroVariance <- .resolveAssayFilterArgument(
+            argumentValue = removeZeroVariance,
+            assayName = assayName,
+            default = FALSE
+        )
         .assertScalarLogical(assayRemoveZeroVariance, "removeZeroVariance")
         if (isTRUE(assayRemoveZeroVariance)) {
             featureVariance <- apply(assayMatrix, 1L, stats::var, na.rm = TRUE)
@@ -624,11 +643,11 @@ filterFeatures <- function(
             )
         }
 
-        assayMinimumVariance <- minimumVariance
-        if (is.list(minimumVariance) &&
-            !is.null(minimumVariance[[assayName]])) {
-            assayMinimumVariance <- minimumVariance[[assayName]]
-        }
+        assayMinimumVariance <- .resolveAssayFilterArgument(
+            argumentValue = minimumVariance,
+            assayName = assayName,
+            default = NULL
+        )
         if (!is.null(assayMinimumVariance)) {
             if (!is.numeric(assayMinimumVariance) ||
                 length(assayMinimumVariance) != 1L ||
@@ -645,10 +664,11 @@ filterFeatures <- function(
             )
         }
 
-        assayTopVariableFeatures <- topVariableFeatures
-        if (is.list(topVariableFeatures) && !is.null(topVariableFeatures[[assayName]])) {
-            assayTopVariableFeatures <- topVariableFeatures[[assayName]]
-        }
+        assayTopVariableFeatures <- .resolveAssayFilterArgument(
+            argumentValue = topVariableFeatures,
+            assayName = assayName,
+            default = NULL
+        )
         if (!is.null(assayTopVariableFeatures)) {
             if (!is.numeric(assayTopVariableFeatures) || length(assayTopVariableFeatures) != 1L ||
                 is.na(assayTopVariableFeatures) || assayTopVariableFeatures < 1L ||
