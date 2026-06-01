@@ -71,6 +71,58 @@ test_that("feature filtering reduces assay size", {
     )
 })
 
+test_that("feature filtering handles assay-specific named-list arguments", {
+    analysisData <- exampleAnalysisData()
+    experimentList <- MultiAssayExperiment::experiments(analysisData)
+    originalFeatureCounts <- vapply(
+        experimentList,
+        function(assayObject) nrow(SummarizedExperiment::assay(assayObject)),
+        integer(1L)
+    )
+    proteinFeatures <- rownames(SummarizedExperiment::assay(
+        experimentList[["protein"]]
+    ))[seq_len(2L)]
+
+    filteredSubset <- filterFeatures(
+        analysisData,
+        featureSubset = list(protein = proteinFeatures)
+    )
+    subsetFeatureCounts <- vapply(
+        MultiAssayExperiment::experiments(filteredSubset),
+        function(assayObject) nrow(SummarizedExperiment::assay(assayObject)),
+        integer(1L)
+    )
+    expect_equal(subsetFeatureCounts[["protein"]], 2L)
+    expect_equal(
+        subsetFeatureCounts[c("transcript", "metabolite")],
+        originalFeatureCounts[c("transcript", "metabolite")]
+    )
+
+    filteredTop <- filterFeatures(
+        analysisData,
+        topVariableFeatures = list(protein = 3L)
+    )
+    topFeatureCounts <- vapply(
+        MultiAssayExperiment::experiments(filteredTop),
+        function(assayObject) nrow(SummarizedExperiment::assay(assayObject)),
+        integer(1L)
+    )
+    expect_equal(topFeatureCounts[["protein"]], 3L)
+    expect_equal(
+        topFeatureCounts[c("transcript", "metabolite")],
+        originalFeatureCounts[c("transcript", "metabolite")]
+    )
+
+    expect_silent(filterFeatures(
+        analysisData,
+        minimumVariance = list(protein = 0)
+    ))
+    expect_error(
+        filterFeatures(analysisData, featureSubset = list(proteinFeatures)),
+        "named lists"
+    )
+})
+
 test_that("sample filtering preserves assay-specific overlap", {
     analysisData <- exampleAnalysisData()
     experimentList <- MultiAssayExperiment::experiments(analysisData)
