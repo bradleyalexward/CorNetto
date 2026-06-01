@@ -31,7 +31,7 @@ remotes::install_github("bradleyalexward/CorNetto")
 
 If you use or build upon CorNetto, please cite:
 
-Ward, B., Belkhir, L., Elens, L., HYGIEIA Consortium (2026). CorNetto: Knowledge-Guided Multi-Omic Correlation Network
+Ward, B., Gatto, L., Belkhir, L., Elens, L., HYGIEIA Consortium (2026). CorNetto: Knowledge-Guided Multi-Omic Correlation Network
 Analysis. R package version 0.99.1.
 https://github.com/bradleyalexward/CorNetto
 
