@@ -65,7 +65,6 @@ differentialResults <- testDifferentialCorrelation(
 )
 differentialNetwork <- createDifferentialCorrelationNetwork(
     differentialResults,
-    differenceAdjustedPValueThreshold = 1,
     minimumAbsoluteCorrelation = 0
 )
 combinedNetwork <- combineNetworks(

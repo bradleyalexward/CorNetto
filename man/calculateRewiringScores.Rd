@@ -44,7 +44,6 @@ differentialTable <- testDifferentialCorrelation(
 )
 differentialNetwork <- createDifferentialCorrelationNetwork(
     differentialTable,
-    differenceAdjustedPValueThreshold = 1,
     minimumAbsoluteCorrelation = 0
 )
 rewiringScores <- calculateRewiringScores(differentialNetwork)

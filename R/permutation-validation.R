@@ -151,7 +151,6 @@
 #'     minimumAbsoluteCorrelation = 0,
 #'     adjustedPValueThreshold = 1,
 #'     pAdjustMethod = "fdr",
-#'     differenceAdjustedPValueThreshold = 1,
 #'     nPermutations = 2,
 #'     seed = 1
 #' )
@@ -169,8 +168,8 @@ permuteRewiringScores <- function(
     adjustedPValueThreshold = 0.05,
     pAdjustMethod = "fdr",
     featureNameColumn = "featureName",
-    differenceAdjustedPValueThreshold = 0.05,
-    edgeWeightMethod = c("absoluteZScore", "signedZScore"),
+    differenceAdjustedPValueThreshold = NULL,
+    edgeWeightMethod = c("signedZScore", "absoluteZScore"),
     scoreColumn = "rawRewiringScore",
     nPermutations = 1000L,
     blockColumn = NULL,

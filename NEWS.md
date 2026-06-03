@@ -19,6 +19,14 @@ SIGNIFICANT USER-VISIBLE CHANGES
     o Replaced the full COVID-19 demonstration matrices with a small
       reproducible example subset suitable for Bioconductor package checks.
 
+    o Updated the differential-correlation to rewiring workflow so
+      testDifferentialCorrelation() first applies the absolute-correlation
+      prefilter, adjusts p-values on the retained edge universe, and keeps
+      edges only when the same group is both sufficiently correlated and
+      significant. createDifferentialCorrelationNetwork() no longer applies
+      a differential-correlation p-value filter by default and now uses
+      signed z-score differences as the default edge weights.
+
 BUG FIXES
 
     o Fixed storage of named results in MultiAssayExperiment metadata.
@@ -48,4 +56,5 @@ SIGNIFICANT USER-VISIBLE CHANGES
       testDifferentialCorrelation(candidateEdgeTable=...).
 
     o Adjusted differential-correlation p-values across the full tested
-      edge universe before applying significance filters.
+      edge universe before applying significance filters. This behavior was
+      changed in version 0.99.1 for the rewiring-first workflow.

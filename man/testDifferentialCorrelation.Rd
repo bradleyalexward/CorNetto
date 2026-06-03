@@ -14,7 +14,7 @@ testDifferentialCorrelation(
   correlationMethod = c("pearson", "spearman"),
   minimumAbsoluteCorrelation = 0.3,
   adjustedPValueThreshold = 0.05,
-  pAdjustMethod = "qvalue",
+  pAdjustMethod = "fdr",
   featureNameColumn = "featureName",
   resultName = NULL,
   storeResult = TRUE
@@ -42,10 +42,13 @@ supplied.}
 currently supports \code{"pearson"} and \code{"spearman"}.}
 
 \item{minimumAbsoluteCorrelation}{Minimum absolute correlation that
-must be present in at least one group before an edge is kept.}
+must be present in at least one group before multiple-testing
+correction and edge retention.}
 
 \item{adjustedPValueThreshold}{Maximum within-group adjusted p-value
-that must be reached in at least one group before an edge is kept.}
+that must be reached in the same group as the correlation threshold
+before an edge is kept. Set \code{NULL} to skip within-group significance
+filtering after the correlation prefilter.}
 
 \item{pAdjustMethod}{Multiple-testing correction method.}
 
@@ -64,6 +67,16 @@ Compute differential correlation statistics for either all within-omic
 feature pairs in one assay or a supplied set of candidate edges.
 Within-omic all-pairs testing uses DGCA, while candidate-edge testing
 evaluates only the supplied edges.
+}
+\details{
+Edges are first filtered to pairs with sufficient absolute
+correlation in at least one group. Within-group and differential
+p-values are then adjusted on this retained edge universe. When
+\code{adjustedPValueThreshold} is not \code{NULL}, an edge is retained only if
+the same group is both sufficiently correlated and significant after
+multiple-testing correction. This rewiring-first behavior creates a
+stable scoring network without requiring every edge to pass a
+differential-correlation p-value threshold.
 }
 \examples{
 analysisData <- exampleAnalysisData()

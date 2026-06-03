@@ -16,8 +16,8 @@ permuteRewiringScores(
   adjustedPValueThreshold = 0.05,
   pAdjustMethod = "fdr",
   featureNameColumn = "featureName",
-  differenceAdjustedPValueThreshold = 0.05,
-  edgeWeightMethod = c("absoluteZScore", "signedZScore"),
+  differenceAdjustedPValueThreshold = NULL,
+  edgeWeightMethod = c("signedZScore", "absoluteZScore"),
   scoreColumn = "rawRewiringScore",
   nPermutations = 1000L,
   blockColumn = NULL,
@@ -49,17 +49,22 @@ supplied.}
 currently supports \code{"pearson"} and \code{"spearman"}.}
 
 \item{minimumAbsoluteCorrelation}{Minimum absolute correlation that
-must be present in at least one group before an edge is kept.}
+must be present in at least one group before multiple-testing
+correction and edge retention.}
 
 \item{adjustedPValueThreshold}{Maximum within-group adjusted p-value
-that must be reached in at least one group before an edge is kept.}
+that must be reached in the same group as the correlation threshold
+before an edge is kept. Set \code{NULL} to skip within-group significance
+filtering after the correlation prefilter.}
 
 \item{pAdjustMethod}{Multiple-testing correction method.}
 
 \item{featureNameColumn}{Row-data column containing display names.}
 
-\item{differenceAdjustedPValueThreshold}{Maximum adjusted
-differential-correlation p-value retained in the network.}
+\item{differenceAdjustedPValueThreshold}{Optional maximum adjusted
+differential-correlation p-value retained in the network. The
+default \code{NULL} keeps all rewiring-scoring edges returned by
+\code{testDifferentialCorrelation()}.}
 
 \item{edgeWeightMethod}{Method used to generate the edge weight.}
 
@@ -102,7 +107,6 @@ validation <- permuteRewiringScores(
     minimumAbsoluteCorrelation = 0,
     adjustedPValueThreshold = 1,
     pAdjustMethod = "fdr",
-    differenceAdjustedPValueThreshold = 1,
     nPermutations = 2,
     seed = 1
 )

@@ -317,9 +317,8 @@ be tightened to remove weakly correlated or non-significant edges.
 ```{r}
 analysisCovid <- createDifferentialCorrelationNetwork(
     differentialCorrelationTable = differentialSparseCorrelations,
-    differenceAdjustedPValueThreshold = 1,
     minimumAbsoluteCorrelation = 0,
-    edgeWeightMethod = "absoluteZScore",
+    edgeWeightMethod = "signedZScore",
     analysisData = analysisCovid,
     resultName = "differentialSparseNetwork",
     storeResult = TRUE)
@@ -372,8 +371,7 @@ analysisCovid <- permuteRewiringScores(
     minimumAbsoluteCorrelation = 0.3,
     adjustedPValueThreshold = 0.05,
     pAdjustMethod = "fdr",
-    differenceAdjustedPValueThreshold = 1,
-    edgeWeightMethod = "absoluteZScore",
+    edgeWeightMethod = "signedZScore",
     scoreColumn = "rawRewiringScore",
     nPermutations = 2,
     seed = 1,
@@ -421,4 +419,3 @@ writeNetworkTables(cytoscapeTables,
 ```{r session-info}
 sessionInfo()
 ```
-

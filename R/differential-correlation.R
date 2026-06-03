@@ -351,28 +351,36 @@
     edgeData$edgeType <- "differentialCorrelation"
     edgeData$edgeDirection <- NA_character_
     edgeData$isDirected <- FALSE
-    edgeData$group1AdjustedPValue <- .adjustDifferentialPValues(edgeData$group1PValue, pAdjustMethod)
-    edgeData$group2AdjustedPValue <- .adjustDifferentialPValues(edgeData$group2PValue, pAdjustMethod)
-    edgeData$adjustedPValue <- .adjustDifferentialPValues(edgeData$pValue, pAdjustMethod)
 
-    keepIndex <- !is.na(edgeData$group1CorrelationValue) & !is.na(edgeData$group2CorrelationValue)
+    group1Strong <- !is.na(edgeData$group1CorrelationValue)
+    group2Strong <- !is.na(edgeData$group2CorrelationValue)
     if (!is.null(minimumAbsoluteCorrelation)) {
-        keepIndex <- keepIndex &
-            (
-            abs(edgeData$group1CorrelationValue) >= minimumAbsoluteCorrelation |
-                abs(edgeData$group2CorrelationValue) >= minimumAbsoluteCorrelation
-            )
+        group1Strong <- group1Strong &
+            abs(edgeData$group1CorrelationValue) >= minimumAbsoluteCorrelation
+        group2Strong <- group2Strong &
+            abs(edgeData$group2CorrelationValue) >= minimumAbsoluteCorrelation
     }
 
-    edgeData <- edgeData[keepIndex, , drop = FALSE]
+    retainForAdjustment <- group1Strong | group2Strong
+    edgeData <- edgeData[retainForAdjustment, , drop = FALSE]
+    group1Strong <- group1Strong[retainForAdjustment]
+    group2Strong <- group2Strong[retainForAdjustment]
     if (!nrow(edgeData)) {
         return(.emptyStandardEdgeTable())
     }
 
+    edgeData$group1AdjustedPValue <- .adjustDifferentialPValues(edgeData$group1PValue, pAdjustMethod)
+    edgeData$group2AdjustedPValue <- .adjustDifferentialPValues(edgeData$group2PValue, pAdjustMethod)
+    edgeData$adjustedPValue <- .adjustDifferentialPValues(edgeData$pValue, pAdjustMethod)
+
     if (!is.null(adjustedPValueThreshold)) {
-        keepIndex <-
-            (!is.na(edgeData$group1AdjustedPValue) & edgeData$group1AdjustedPValue <= adjustedPValueThreshold) |
-            (!is.na(edgeData$group2AdjustedPValue) & edgeData$group2AdjustedPValue <= adjustedPValueThreshold)
+        group1Supported <- group1Strong &
+            !is.na(edgeData$group1AdjustedPValue) &
+            edgeData$group1AdjustedPValue <= adjustedPValueThreshold
+        group2Supported <- group2Strong &
+            !is.na(edgeData$group2AdjustedPValue) &
+            edgeData$group2AdjustedPValue <= adjustedPValueThreshold
+        keepIndex <- group1Supported | group2Supported
         edgeData <- edgeData[keepIndex, , drop = FALSE]
         if (!nrow(edgeData)) {
             return(.emptyStandardEdgeTable())
@@ -442,9 +450,12 @@
 #' @param correlationMethod Correlation method. Differential correlation
 #'   currently supports `"pearson"` and `"spearman"`.
 #' @param minimumAbsoluteCorrelation Minimum absolute correlation that
-#'   must be present in at least one group before an edge is kept.
+#'   must be present in at least one group before multiple-testing
+#'   correction and edge retention.
 #' @param adjustedPValueThreshold Maximum within-group adjusted p-value
-#'   that must be reached in at least one group before an edge is kept.
+#'   that must be reached in the same group as the correlation threshold
+#'   before an edge is kept. Set `NULL` to skip within-group significance
+#'   filtering after the correlation prefilter.
 #' @param pAdjustMethod Multiple-testing correction method.
 #' @param featureNameColumn Row-data column containing display names.
 #' @param resultName Optional name used when storing the result.
@@ -452,6 +463,14 @@
 #'
 #' @return A standardized edge `DataFrame` or an updated
 #'   `MultiAssayExperiment`.
+#' @details Edges are first filtered to pairs with sufficient absolute
+#'   correlation in at least one group. Within-group and differential
+#'   p-values are then adjusted on this retained edge universe. When
+#'   `adjustedPValueThreshold` is not `NULL`, an edge is retained only if
+#'   the same group is both sufficiently correlated and significant after
+#'   multiple-testing correction. This rewiring-first behavior creates a
+#'   stable scoring network without requiring every edge to pass a
+#'   differential-correlation p-value threshold.
 #' @examples
 #' analysisData <- exampleAnalysisData()
 #' differentialTable <- testDifferentialCorrelation(
@@ -476,7 +495,7 @@ testDifferentialCorrelation <- function(
     correlationMethod = c("pearson", "spearman"),
     minimumAbsoluteCorrelation = 0.3,
     adjustedPValueThreshold = 0.05,
-    pAdjustMethod = "qvalue",
+    pAdjustMethod = "fdr",
     featureNameColumn = "featureName",
     resultName = NULL,
     storeResult = TRUE
@@ -585,8 +604,10 @@ testDifferentialCorrelation <- function(
 #'
 #' @param differentialCorrelationTable Output of
 #'   `testDifferentialCorrelation()`.
-#' @param differenceAdjustedPValueThreshold Maximum adjusted
-#'   differential-correlation p-value retained in the network.
+#' @param differenceAdjustedPValueThreshold Optional maximum adjusted
+#'   differential-correlation p-value retained in the network. The
+#'   default `NULL` keeps all rewiring-scoring edges returned by
+#'   `testDifferentialCorrelation()`.
 #' @param minimumAbsoluteCorrelation Minimum absolute correlation used to
 #'   classify gains, losses, sign flips, and strengthening or weakening.
 #' @param edgeWeightMethod Method used to generate the edge weight.
@@ -611,16 +632,15 @@ testDifferentialCorrelation <- function(
 #' )
 #' differentialNetwork <- createDifferentialCorrelationNetwork(
 #'     differentialTable,
-#'     differenceAdjustedPValueThreshold = 1,
 #'     minimumAbsoluteCorrelation = 0
 #' )
 #' differentialNetwork
 #' @export
 createDifferentialCorrelationNetwork <- function(
     differentialCorrelationTable,
-    differenceAdjustedPValueThreshold = 0.05,
+    differenceAdjustedPValueThreshold = NULL,
     minimumAbsoluteCorrelation = 0.3,
-    edgeWeightMethod = c("absoluteZScore", "signedZScore"),
+    edgeWeightMethod = c("signedZScore", "absoluteZScore"),
     analysisData = NULL,
     resultName = "differentialCorrelationNetwork",
     storeResult = FALSE
@@ -642,10 +662,32 @@ createDifferentialCorrelationNetwork <- function(
     }
 
     edgeData <- .asPlainDataFrame(differentialCorrelationTable)
-    keepIndex <- !is.na(edgeData$adjustedPValue) & edgeData$adjustedPValue <= differenceAdjustedPValueThreshold
-    edgeData <- edgeData[keepIndex, , drop = FALSE]
-    if (!nrow(edgeData)) {
-        return(.emptyStandardEdgeTable())
+    if (!is.null(differenceAdjustedPValueThreshold)) {
+        if (!is.numeric(differenceAdjustedPValueThreshold) ||
+            length(differenceAdjustedPValueThreshold) != 1L ||
+            is.na(differenceAdjustedPValueThreshold) ||
+            differenceAdjustedPValueThreshold < 0) {
+            stop(
+                "`differenceAdjustedPValueThreshold` must be NULL or a non-negative numeric scalar.",
+                call. = FALSE
+            )
+        }
+        keepIndex <- !is.na(edgeData$adjustedPValue) &
+            edgeData$adjustedPValue <= differenceAdjustedPValueThreshold
+        edgeData <- edgeData[keepIndex, , drop = FALSE]
+        if (!nrow(edgeData)) {
+            edgeTable <- .emptyStandardEdgeTable()
+            if (!storeResult) {
+                return(edgeTable)
+            }
+            .assertMultiAssayExperiment(analysisData)
+            return(.storeCorNettoResults(
+                analysisData = analysisData,
+                slotName = "differentialCorrelationNetworks",
+                resultObject = edgeTable,
+                resultName = resultName
+            ))
+        }
     }
 
     edgeData$edgeDirection <- vapply(
@@ -749,7 +791,6 @@ createDifferentialCorrelationNetwork <- function(
 #' )
 #' differentialNetwork <- createDifferentialCorrelationNetwork(
 #'     differentialTable,
-#'     differenceAdjustedPValueThreshold = 1,
 #'     minimumAbsoluteCorrelation = 0
 #' )
 #' rewiringScores <- calculateRewiringScores(differentialNetwork)
