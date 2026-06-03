@@ -123,6 +123,33 @@ test_that("feature filtering handles assay-specific named-list arguments", {
     )
 })
 
+test_that("feature filtering drops assays with no retained features", {
+    analysisData <- exampleAnalysisData()
+    filtered <- NULL
+    expect_warning(
+        filtered <- filterFeatures(
+            analysisData = analysisData,
+            assayNames = c("protein", "transcript", "metabolite"),
+            featureSubset = list(
+                protein = c("P1", "P2"),
+                transcript = c("T1", "T2"),
+                metabolite = "not_measured"
+            )
+        ),
+        "dropping this assay"
+    )
+
+    filteredAssays <- names(MultiAssayExperiment::experiments(filtered))
+    expect_true(all(c("protein", "transcript") %in% filteredAssays))
+    expect_false("metabolite" %in% filteredAssays)
+    expect_equal(
+        nrow(SummarizedExperiment::assay(
+            MultiAssayExperiment::experiments(filtered)[["protein"]]
+        )),
+        2L
+    )
+})
+
 test_that("sample filtering preserves assay-specific overlap", {
     analysisData <- exampleAnalysisData()
     experimentList <- MultiAssayExperiment::experiments(analysisData)
