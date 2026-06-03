@@ -687,12 +687,22 @@ filterFeatures <- function(
 
         keepFeatures <- intersect(rownames(assayMatrix), keepFeatures)
         if (!length(keepFeatures)) {
-            stop("Filtering removed all features from assay `", assayName, "`.", call. = FALSE)
+                        warning(
+                "Filtering removed all features from assay `", assayName,
+                "`; dropping this assay from the filtered result.",
+                call. = FALSE
+            )
+            experimentList[[assayName]] <- NULL
+            next
         }
 
         experimentList[[assayName]] <- assayObject[keepFeatures, , drop = FALSE]
     }
 
+        if (!length(experimentList)) {
+        stop("Filtering removed all assays from `analysisData`.", call. = FALSE)
+    }
+    
     MultiAssayExperiment::experiments(analysisData) <- experimentList
     validateAnalysisData(analysisData, quiet = TRUE)
 }
