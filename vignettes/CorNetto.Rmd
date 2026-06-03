@@ -133,7 +133,6 @@ priorGuidedDifferentialResults <- testDifferentialCorrelation(
 
 priorGuidedDifferentialNetwork <- createDifferentialCorrelationNetwork(
     differentialCorrelationTable = priorGuidedDifferentialResults,
-    differenceAdjustedPValueThreshold = 1,
     minimumAbsoluteCorrelation = 0
 )
 
@@ -154,7 +153,6 @@ rewiringValidation <- permuteRewiringScores(
     groupLevels = c("PASC", "Recovered"),
     minimumAbsoluteCorrelation = 0,
     adjustedPValueThreshold = 1,
-    differenceAdjustedPValueThreshold = 1,
     pAdjustMethod = "fdr",
     nPermutations = 2,
     seed = 1
@@ -185,7 +183,6 @@ differentialResults <- testDifferentialCorrelation(
 
 differentialNetwork <- createDifferentialCorrelationNetwork(
     differentialCorrelationTable = differentialResults,
-    differenceAdjustedPValueThreshold = 1,
     minimumAbsoluteCorrelation = 0
 )
 

@@ -111,51 +111,95 @@ test_that("candidate-edge differential correlation ignores unmeasured assays", {
     expect_true(all(differentialResults$toAssayName %in% measuredAssays))
 })
 
-test_that("differential adjusted p-values are calculated before filtering", {
-    analysisData <- exampleAnalysisData()
-    resolveGroupSamples <- getFromNamespace(".resolveGroupSamples", "CorNetto")
-    resolveFeatureSubset <- getFromNamespace(".resolveFeatureSubset", "CorNetto")
-    computeRawDGCA <- getFromNamespace(".computeDifferentialCorrelationDGCA", "CorNetto")
+test_that("rewiring-first filtering couples strength and significance within group", {
     finalizeResults <- getFromNamespace(".finalizeDifferentialCorrelationResults", "CorNetto")
 
-    groupLevels <- c("PASC", "Recovered")
-    group1SampleIds <- resolveGroupSamples(analysisData, "clinicalGroup", groupLevels[[1L]])
-    group2SampleIds <- resolveGroupSamples(analysisData, "clinicalGroup", groupLevels[[2L]])
-    sharedFeatures <- resolveFeatureSubset(analysisData, "protein")
-
-    rawResults <- suppressWarnings(computeRawDGCA(
-        analysisData = analysisData,
-        assayName = "protein",
-        sharedFeatures = sharedFeatures,
-        group1SampleIds = group1SampleIds,
-        group2SampleIds = group2SampleIds,
-        groupLevels = groupLevels,
-        correlationMethod = "pearson",
-        featureNameColumn = "featureName"
-    ))
-    rawData <- as.data.frame(rawResults)
-    expectedAdjusted <- stats::p.adjust(rawData$pValue, method = "fdr")
-
-    minimumCorrelation <- stats::median(
-        abs(c(rawData$group1CorrelationValue, rawData$group2CorrelationValue)),
-        na.rm = TRUE
+    rawResults <- S4Vectors::DataFrame(
+        fromFeatureIdentifier = c("A", "B", "C", "D"),
+        toFeatureIdentifier = c("E", "F", "G", "H"),
+        fromFeatureName = c("A", "B", "C", "D"),
+        toFeatureName = c("E", "F", "G", "H"),
+        fromAssayName = rep("protein", 4),
+        toAssayName = rep("protein", 4),
+        group1CorrelationValue = c(0.5, 0.5, 0.1, 0.1),
+        group2CorrelationValue = c(0.1, 0.1, 0.5, 0.1),
+        group1PValue = c(0.001, 0.9, 0.9, 0.001),
+        group2PValue = c(0.9, 0.001, 0.001, 0.001),
+        pValue = c(0.4, 0.2, 0.1, 0.001),
+        zScoreDifference = c(1, 2, 3, 4),
+        check.names = FALSE
     )
+
     filteredResults <- finalizeResults(
         edgeTable = rawResults,
-        groupLevels = groupLevels,
-        minimumAbsoluteCorrelation = minimumCorrelation,
-        adjustedPValueThreshold = 1,
+        groupLevels = c("Recovered", "PASC"),
+        minimumAbsoluteCorrelation = 0.3,
+        adjustedPValueThreshold = 0.01,
         pAdjustMethod = "fdr",
         correlationMethod = "pearson"
     )
     filteredData <- as.data.frame(filteredResults)
-    expect_gt(nrow(filteredData), 0)
+    prefilteredData <- as.data.frame(rawResults)[1:3, , drop = FALSE]
 
-    rawKey <- paste(rawData$fromFeatureIdentifier, rawData$toFeatureIdentifier, sep = "::")
-    filteredKey <- paste(filteredData$fromFeatureIdentifier, filteredData$toFeatureIdentifier, sep = "::")
+    expect_equal(filteredData$fromFeatureIdentifier, c("A", "C"))
+    expect_false("B" %in% filteredData$fromFeatureIdentifier)
+    expect_false("D" %in% filteredData$fromFeatureIdentifier)
     expect_equal(
         filteredData$adjustedPValue,
-        expectedAdjusted[match(filteredKey, rawKey)]
+        stats::p.adjust(prefilteredData$pValue, method = "fdr")[c(1, 3)]
+    )
+    expect_equal(
+        filteredData$group1AdjustedPValue[[1]],
+        stats::p.adjust(prefilteredData$group1PValue, method = "fdr")[[1]]
+    )
+    expect_equal(
+        filteredData$group2AdjustedPValue[[2]],
+        stats::p.adjust(prefilteredData$group2PValue, method = "fdr")[[3]]
+    )
+})
+
+test_that("weighted networks default to rewiring-first signed z-score weights", {
+    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
+    analysisData <- exampleAnalysisData()
+    differentialResults <- coerceEdgeTable(data.frame(
+        fromFeatureIdentifier = c("A", "B"),
+        toFeatureIdentifier = c("C", "D"),
+        fromFeatureName = c("A", "B"),
+        toFeatureName = c("C", "D"),
+        fromAssayName = rep("protein", 2),
+        toAssayName = rep("protein", 2),
+        group1CorrelationValue = c(0.5, 0.5),
+        group2CorrelationValue = c(0.1, -0.5),
+        adjustedPValue = c(0.8, 0.9),
+        zScoreDifference = c(-2, 3),
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+    ))
+
+    differentialNetwork <- createDifferentialCorrelationNetwork(
+        differentialCorrelationTable = differentialResults,
+        minimumAbsoluteCorrelation = 0.3
+    )
+    expect_equal(nrow(differentialNetwork), 2)
+    expect_equal(differentialNetwork$edgeWeight, c(-2, 3))
+
+    filteredNetwork <- createDifferentialCorrelationNetwork(
+        differentialCorrelationTable = differentialResults,
+        differenceAdjustedPValueThreshold = 0.05,
+        minimumAbsoluteCorrelation = 0.3
+    )
+    expect_equal(nrow(filteredNetwork), 0)
+
+    updated <- createDifferentialCorrelationNetwork(
+        differentialCorrelationTable = differentialResults,
+        differenceAdjustedPValueThreshold = 0.05,
+        analysisData = analysisData,
+        storeResult = TRUE
+    )
+    expect_true(methods::is(updated, "MultiAssayExperiment"))
+    expect_equal(
+        nrow(differentialCorrelationNetworks(updated)$differentialCorrelationNetwork),
+        0
     )
 })
 

@@ -6,9 +6,9 @@
 \usage{
 createDifferentialCorrelationNetwork(
   differentialCorrelationTable,
-  differenceAdjustedPValueThreshold = 0.05,
+  differenceAdjustedPValueThreshold = NULL,
   minimumAbsoluteCorrelation = 0.3,
-  edgeWeightMethod = c("absoluteZScore", "signedZScore"),
+  edgeWeightMethod = c("signedZScore", "absoluteZScore"),
   analysisData = NULL,
   resultName = "differentialCorrelationNetwork",
   storeResult = FALSE
@@ -18,8 +18,10 @@ createDifferentialCorrelationNetwork(
 \item{differentialCorrelationTable}{Output of
 \code{testDifferentialCorrelation()}.}
 
-\item{differenceAdjustedPValueThreshold}{Maximum adjusted
-differential-correlation p-value retained in the network.}
+\item{differenceAdjustedPValueThreshold}{Optional maximum adjusted
+differential-correlation p-value retained in the network. The
+default \code{NULL} keeps all rewiring-scoring edges returned by
+\code{testDifferentialCorrelation()}.}
 
 \item{minimumAbsoluteCorrelation}{Minimum absolute correlation used to
 classify gains, losses, sign flips, and strengthening or weakening.}
@@ -55,7 +57,6 @@ differentialTable <- testDifferentialCorrelation(
 )
 differentialNetwork <- createDifferentialCorrelationNetwork(
     differentialTable,
-    differenceAdjustedPValueThreshold = 1,
     minimumAbsoluteCorrelation = 0
 )
 differentialNetwork
