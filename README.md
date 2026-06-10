@@ -17,8 +17,7 @@ The first package version focuses on:
 - graph construction and Cytoscape-ready export
 
 ## Installation
-
-Before Bioconductor acceptance, install the development version from GitHub:
+Please install the development version from GitHub:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE)) {
