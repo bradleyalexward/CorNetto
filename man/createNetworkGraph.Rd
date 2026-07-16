@@ -4,7 +4,12 @@
 \alias{createNetworkGraph}
 \title{Create an igraph Object from a CorNetto Edge Table}
 \usage{
-createNetworkGraph(networkEdgeTable, nodeTable = NULL, directed = NULL)
+createNetworkGraph(
+  networkEdgeTable,
+  nodeTable = NULL,
+  directed = NULL,
+  mirrorUndirectedEdges = TRUE
+)
 }
 \arguments{
 \item{networkEdgeTable}{A standardized edge table.}
@@ -14,6 +19,11 @@ table is used when present and otherwise derived from the edges.}
 
 \item{directed}{Optional logical value. When \code{NULL}, the graph is
 directed when any edge is directed.}
+
+\item{mirrorUndirectedEdges}{Whether to add a reverse copy of each
+undirected edge when the graph is directed. \code{igraph} cannot mix
+directed and undirected edges in one object, so without this an
+undirected edge in a directed graph is only traversable one way.}
 }
 \value{
 An \code{igraph} object.
@@ -21,6 +31,22 @@ An \code{igraph} object.
 \description{
 Stored node metadata is used when present so isolated nodes can be
 preserved across graph creation and export.
+}
+\details{
+\code{igraph} graphs are either directed or undirected as a whole. When
+a table mixes both, the graph is built directed and each undirected edge
+is added in both directions so that \code{mode = "in"} and \code{mode = "out"}
+traversal treat it symmetrically. Set \code{mirrorUndirectedEdges = FALSE} to
+keep a one-to-one correspondence between rows and graph edges, at the cost
+of asymmetric neighbourhoods.
+
+All standardized edge columns become edge attributes. Nonstandard columns
+in a supplied or stored node table are retained as vertex attributes.
+
+Note that an edge table already carrying reverse copies, as produced by
+\code{combineNetworks(includeReverseEdges = TRUE)}, will yield parallel edges
+in an undirected graph. Prefer \code{includeReverseEdges = FALSE} and let this
+function handle direction.
 }
 \examples{
 knowledgeNetwork <- exampleKnowledgeNetwork()

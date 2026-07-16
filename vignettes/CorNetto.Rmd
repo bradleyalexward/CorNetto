@@ -1,7 +1,7 @@
 ---
 title: "CorNetto Workflow"
 author: "Bradley Ward"
-date: "2026-05-19"
+date: "`r Sys.Date()`"
 output:
   BiocStyle::html_document:
     toc: true
@@ -30,12 +30,37 @@ metadata, and returns standardized edge tables that can be combined,
 converted to `igraph` objects, or exported as Cytoscape-ready node and
 edge tables.
 
-CorNetto is for downstream analysis after assay-level preprocessing 
-by reusing Bioconductor containers and established infrastructure such 
-as `DGCA` for dense differentialcorrelation testing and `igraph` for 
-graph representation. The packageadds the glue needed for prior-guided 
-candidate-edge differential correlation, knowledge-network-aware integration, 
-focused subnetworks, and rewiring summaries in a single reproducible workflow.
+CorNetto is for downstream analysis after assay-level preprocessing. It
+uses Bioconductor containers, implements the Fisher z-difference test for
+differential correlation, and uses `igraph` for graph representation. The
+package adds the glue needed for prior-guided
+candidate-edge differential correlation, knowledge-network-aware
+integration, focused subnetworks, and rewiring summaries in a single
+reproducible workflow.
+
+# Relationship to existing Bioconductor software
+
+The Bioconductor package [dcanr](https://bioconductor.org/packages/dcanr)
+provides several methods and an evaluation framework for differential
+co-expression or association network inference. CorNetto has a narrower
+role. It works directly with `MultiAssayExperiment`, tests prespecified
+within- or cross-assay edges from heterogeneous prior networks, and carries
+those results through network integration and node-level rewiring summaries.
+It is therefore complementary to dcanr rather than a replacement for its
+method-comparison and benchmarking framework.
+
+# Workflow overview
+
+Green boxes are CorNetto functions, blue boxes are the objects they
+return, and orange boxes are inputs and the `MultiAssayExperiment` that
+carries results between steps. The three columns are independent entry
+points: group-specific correlation networks on the left, differential
+correlation and rewiring in the centre, and prior-knowledge assembly on
+the right.
+
+```{r workflow-flowchart, echo = FALSE, out.width = "100%", fig.cap = "The CorNetto workflow, from input data and prior knowledge through to rewiring validation and export."}
+knitr::include_graphics("figures/flowchart.png")
+```
 
 # Version information
 
@@ -141,9 +166,19 @@ c(nrow(priorGuidedDifferentialResults), nrow(priorGuidedDifferentialNetwork))
 
 # Permutation validation
 
-`permuteRewiringScores()` permutes group labels and reruns the
-differential-correlation workflow to validate node-level rewiring
-scores.
+`permuteRewiringScores()` permutes group labels, recomputes the
+differential-correlation statistics over a fixed edge universe, and compares
+each node's observed rewiring score with the permutation distribution.
+
+The fixed edge set is attempted in every permutation. An edge can still
+be unscored if a permuted group has insufficient pairwise-complete data or a
+constant feature, and `contributingPermutations` records the resulting loss.
+Supplying `candidateEdgeTable` with all observed-data filters disabled, as
+below, lets CorNetto fix the candidate universe before inspecting the group
+labels. The result is marked as a randomization p-value only when every edge
+and the selected node score are estimable under the permitted allocations. The
+user is still responsible for prespecifying the candidates and for the
+exchangeability assumption.
 
 ```{r permutation-validation}
 rewiringValidation <- permuteRewiringScores(
@@ -152,14 +187,21 @@ rewiringValidation <- permuteRewiringScores(
     groupColumn = "clinicalGroup",
     groupLevels = c("PASC", "Recovered"),
     minimumAbsoluteCorrelation = 0,
-    adjustedPValueThreshold = 1,
+    adjustedPValueThreshold = NULL,
     pAdjustMethod = "fdr",
-    nPermutations = 2,
+    nPermutations = 99,
     seed = 1
 )
 
 head(rewiringValidation$rewiringTable)
+rewiringValidation$inferenceStatus
 ```
+
+For a fully scored node, the smallest tail probability is
+`1 / (nPermutations + 1)`, so 99 permutations bottom out at 0.01.
+`contributingPermutations` records how many permutations produced a score for
+each node. Treat the values as conditional rankings whenever
+`inferenceStatus` says so.
 
 # Differential correlation and rewiring
 
@@ -193,6 +235,21 @@ rewiringScores <- calculateRewiringScores(
 
 head(rewiringScores)
 ```
+
+The three scores are descriptive, not tests. `rawRewiringScore` is the L2
+norm of a node's incident z-scores and grows with degree.
+`rootMeanSquareRewiringScore` divides that by `sqrt(degree)` and is the one
+to compare across nodes of different degree. `degreeMatchedZScore`
+standardizes within bins of `log2(degree + 1)`, so it is a within-bin
+ranking aid rather than a z-score against a null model; it is `NA` for bins
+holding fewer than five nodes, since a smaller bin cannot produce a
+meaningful spread. `permuteRewiringScores()` adds a permutation reference;
+its `inferenceStatus` states whether the result meets the computational
+conditions for randomization inference.
+
+All five proteins here are mutually tested, so every node has degree four and
+they share a single degree bin. On a real network with a spread of degrees
+the bins do the work they are named for.
 
 # Integrated and focused network
 

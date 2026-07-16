@@ -12,7 +12,18 @@ test_that("example analysis data is a valid MultiAssayExperiment", {
     summary <- summarizeAnalysisData(validated, groupColumn = "clinicalGroup", quiet = TRUE)
     expect_true(all(c("assays", "samples", "warnings") %in% names(summary)))
     expect_equal(nrow(summary$assays), 3)
-    expect_true(any(grepl("fewer than 10", summary$warnings)))
+    expect_equal(summary$samples$overall$sampleCount, 20L)
+    expect_equal(summary$samples$groups$sampleCount, c(10L, 10L))
+    # The example data sits at the default threshold, so nothing should fire.
+    expect_false(any(grepl("fewer than", summary$warnings)))
+
+    strictSummary <- summarizeAnalysisData(
+        validated,
+        groupColumn = "clinicalGroup",
+        lowSampleWarningThreshold = 15L,
+        quiet = TRUE
+    )
+    expect_true(any(grepl("fewer than 15", strictSummary$warnings)))
 })
 
 test_that("feature filtering reduces assay size", {
@@ -28,7 +39,7 @@ test_that("feature filtering reduces assay size", {
 
     expect_error(
         filterFeatures(analysisData, assayNames = "protein", topVariableFeatures = -1),
-        "positive integer"
+        "finite integer"
     )
     expect_error(
         filterFeatures(analysisData, assayNames = "protein", minimumVariance = -0.1),
@@ -169,7 +180,7 @@ test_that("sample filtering preserves assay-specific overlap", {
 
     expect_equal(
         rownames(MultiAssayExperiment::colData(filtered)),
-        paste0("R", 1:4)
+        paste0("R", 1:10)
     )
 
     filteredExperiments <- MultiAssayExperiment::experiments(filtered)
@@ -183,12 +194,10 @@ test_that("sample filtering preserves assay-specific overlap", {
         filteredExperiments[["metabolite"]]
     )
 
-    expect_equal(ncol(proteinAssay), 3L)
-    expect_equal(ncol(transcriptAssay), 4L)
-    expect_equal(
-        ncol(metaboliteAssay),
-        4L
-    )
+    # protein lost R1 above, the other assays keep all ten Recovered samples
+    expect_equal(ncol(proteinAssay), 9L)
+    expect_equal(ncol(transcriptAssay), 10L)
+    expect_equal(ncol(metaboliteAssay), 10L)
 })
 
 test_that("sample filtering validates explicit sample identifiers", {
@@ -306,4 +315,174 @@ test_that("example knowledge network validates and can be combined", {
     expect_true(all(c("overall", "assayPairs", "warnings") %in% names(networkSummary)))
     expect_equal(networkSummary$overall$totalEdges, nrow(combined))
     expect_gt(networkSummary$overall$measuredAssayEdges, 0)
+})
+
+test_that("packaged synthetic priors cover measured and decoy edges", {
+    priorDir <- system.file("extdata", "priorNetworks", package = "CorNetto")
+    fileNames <- c(
+        "synthetic_within_assay.csv",
+        "synthetic_cross_assay.csv",
+        "synthetic_decoy_edges.csv"
+    )
+    expect_true(nzchar(priorDir))
+    expect_true(all(file.exists(file.path(priorDir, fileNames))))
+
+    columnMap <- c(
+        fromFeatureIdentifier = "from",
+        toFeatureIdentifier = "to",
+        fromFeatureName = "fromName",
+        toFeatureName = "toName",
+        fromAssayName = "fromOmic",
+        toAssayName = "toOmic",
+        edgeType = "edgeType",
+        edgeDirection = "edgeDirection",
+        evidenceScore = "edgeWeight"
+    )
+    networks <- lapply(fileNames, function(fileName) {
+        readKnowledgeNetwork(
+            file.path(priorDir, fileName),
+            columnMapping = columnMap,
+            knowledgeSource = paste("synthetic", fileName)
+        )
+    })
+    combined <- do.call(
+        combineKnowledgeNetworks,
+        c(networks, list(removeDuplicates = TRUE))
+    )
+
+    expect_setequal(
+        unique(combined$edgeType),
+        c("syntheticWithinAssay", "syntheticCrossAssay", "syntheticDecoy")
+    )
+    expect_true(any(combined$isDirected))
+    expect_true(any(!combined$isDirected))
+
+    covidDir <- system.file("extdata", "covidData", package = "CorNetto")
+    assayFiles <- c(
+        RNA = "rnaMatrix.csv",
+        Protein = "proteinMatrix.csv",
+        Metabolite = "metaboliteMatrix.csv"
+    )
+    measuredKeys <- unlist(
+        lapply(names(assayFiles), function(assayName) {
+            abundance <- read.csv(
+                file.path(covidDir, assayFiles[[assayName]]),
+                row.names = 1L,
+                check.names = FALSE
+            )
+            paste(assayName, rownames(abundance), sep = "::")
+        }),
+        use.names = FALSE
+    )
+    featureSelection <- read.csv(
+        file.path(covidDir, "featureSelection.csv"),
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+    )
+    expect_identical(
+        paste(
+            featureSelection$assayName,
+            featureSelection$featureIdentifier,
+            sep = "::"
+        ),
+        measuredKeys
+    )
+    measured <- filterNetworkByNodes(
+        combined,
+        nodes = measuredKeys,
+        mode = "both",
+        nodeIdType = "key"
+    )
+
+    expect_lt(nrow(measured), nrow(combined))
+    expect_true(all(
+        paste(measured$fromAssayName, measured$fromFeatureIdentifier, sep = "::") %in%
+            measuredKeys
+    ))
+    expect_true(all(
+        paste(measured$toAssayName, measured$toFeatureIdentifier, sep = "::") %in%
+            measuredKeys
+    ))
+})
+
+test_that("analysis input requires explicit sample and assay identifiers", {
+    assay <- matrix(
+        seq_len(8),
+        nrow = 2,
+        dimnames = list(c("F1", "F2"), paste0("S", 1:4))
+    )
+    automaticRows <- data.frame(group = rep(c("A", "B"), each = 2))
+    expect_error(
+        createAnalysisData(list(protein = assay), automaticRows),
+        "explicit row names"
+    )
+
+    sampleData <- data.frame(
+        sampleId = paste0("S", 1:4),
+        group = rep(c("A", "B"), each = 2)
+    )
+    duplicateNames <- list(assay, assay)
+    names(duplicateNames) <- c("protein", "protein")
+    expect_error(
+        createAnalysisData(duplicateNames, sampleData),
+        "unique"
+    )
+})
+
+test_that("analysis input rejects NaN and complex abundances", {
+    sampleData <- data.frame(sampleId = c("S1", "S2"), group = c("A", "B"))
+    nanAssay <- matrix(
+        c(1, NaN, 3, 4),
+        nrow = 2,
+        dimnames = list(c("F1", "F2"), c("S1", "S2"))
+    )
+    complexAssay <- matrix(
+        c(1 + 1i, 2 + 0i, 3 + 0i, 4 + 0i),
+        nrow = 2,
+        dimnames = list(c("F1", "F2"), c("S1", "S2"))
+    )
+
+    expect_error(createAnalysisData(list(protein = nanAssay), sampleData), "Non-finite")
+    expect_error(createAnalysisData(list(protein = complexAssay), sampleData), "Complex")
+})
+
+test_that("standard edge coercion preserves numeric factor values", {
+    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
+    edge <- data.frame(
+        fromFeatureIdentifier = "A",
+        toFeatureIdentifier = "B",
+        fromAssayName = "protein",
+        toAssayName = "protein",
+        edgeWeight = factor("-2"),
+        pValue = factor("0.025"),
+        stringsAsFactors = TRUE
+    )
+
+    result <- coerceEdgeTable(edge)
+    expect_equal(result$edgeWeight, -2)
+    expect_equal(result$pValue, 0.025)
+})
+
+test_that("standard edge coercion preserves logical factor values", {
+    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
+    edge <- data.frame(
+        fromFeatureIdentifier = c("A", "B"),
+        toFeatureIdentifier = c("B", "C"),
+        fromAssayName = "protein",
+        toAssayName = "protein",
+        isDirected = factor(c("TRUE", "FALSE"))
+    )
+
+    result <- coerceEdgeTable(edge)
+    expect_identical(result$isDirected, c(TRUE, FALSE))
+})
+
+test_that("knowledge networks reject blank endpoints", {
+    network <- data.frame(
+        fromFeatureIdentifier = " ",
+        toFeatureIdentifier = "B",
+        fromAssayName = "protein",
+        toAssayName = "protein"
+    )
+    expect_error(validateKnowledgeNetwork(network, quiet = TRUE), "blank")
 })

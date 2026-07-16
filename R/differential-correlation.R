@@ -1,77 +1,28 @@
+# atanh() diverges at |r| = 1. The small bound keeps the Fisher transform
+# finite for perfectly collinear pairs and is applied identically in dense and
+# candidate-edge analyses.
 .boundCorrelation <- function(correlationValues, epsilon = 1e-06) {
     pmin(pmax(correlationValues, -1 + epsilon), 1 - epsilon)
 }
 
-.adjustDifferentialPValues <- function(pValues, pAdjustMethod) {
-    adjustedValues <- rep(NA_real_, length(pValues))
-    nonMissingIndex <- !is.na(pValues)
-    if (!any(nonMissingIndex)) {
-        return(adjustedValues)
-    }
-
-    observedPValues <- as.numeric(pValues[nonMissingIndex])
-    if (identical(pAdjustMethod, "qvalue")) {
-        if (!requireNamespace("qvalue", quietly = TRUE)) {
-            stop(
-                "The `qvalue` package is required when `pAdjustMethod = \"qvalue\"`.",
-                call. = FALSE
-            )
-        }
-        if (length(observedPValues) == 1L) {
-            adjustedValues[nonMissingIndex] <- observedPValues
-            return(adjustedValues)
-        }
-
-        qvalueResult <- tryCatch(
-            qvalue::qvalue(observedPValues),
-            error = function(...) NULL
-        )
-        if (is.null(qvalueResult)) {
-            stop(
-                "qvalue adjustment failed. Try `pAdjustMethod = \"fdr\"` or inspect the p-value distribution.",
-                call. = FALSE
-            )
-        }
-
-        adjustedValues[nonMissingIndex] <- qvalueResult$qvalues
-        return(adjustedValues)
-    }
-
-    adjustedValues[nonMissingIndex] <- stats::p.adjust(observedPValues, method = pAdjustMethod)
-    adjustedValues
-}
-
-.resolveDGCAColumn <- function(ddcorTable, groupLevel, suffix) {
-    candidateColumns <- c(
-        paste0(groupLevel, suffix),
-        paste0(make.names(groupLevel), suffix)
+.fisherCorrelationDifference <- function(
+    group1Correlation,
+    group1SampleCount,
+    group2Correlation,
+    group2SampleCount,
+    correlationMethod
+) {
+    varianceFactor <- if (identical(correlationMethod, "spearman")) 1.06 else 1
+    numerator <- atanh(.boundCorrelation(group2Correlation)) -
+        atanh(.boundCorrelation(group1Correlation))
+    denominator <- sqrt(
+        varianceFactor / (group1SampleCount - 3) +
+            varianceFactor / (group2SampleCount - 3)
     )
-    matchedColumns <- intersect(candidateColumns, names(ddcorTable))
-    if (!length(matchedColumns)) {
-        stop(
-            "DGCA output is missing the expected column for group `", groupLevel,
-            "` and suffix `", suffix, "`.",
-            call. = FALSE
-        )
-    }
-
-    matchedColumns[[1L]]
+    numerator / denominator
 }
 
-.buildDifferentialCorrelationDesign <- function(group1SampleIds, group2SampleIds, groupLevels) {
-    sampleGroups <- factor(
-        c(
-            rep(groupLevels[[1L]], length(group1SampleIds)),
-            rep(groupLevels[[2L]], length(group2SampleIds))
-        ),
-        levels = groupLevels
-    )
-    designMatrix <- stats::model.matrix(~ 0 + sampleGroups)
-    colnames(designMatrix) <- groupLevels
-    designMatrix
-}
-
-.computeDifferentialCorrelationDGCA <- function(
+.computeDifferentialCorrelationAllPairs <- function(
     analysisData,
     assayName,
     sharedFeatures,
@@ -85,6 +36,9 @@
     group1SampleIds <- intersect(group1SampleIds, colnames(assayMatrix))
     group2SampleIds <- intersect(group2SampleIds, colnames(assayMatrix))
 
+    # The Fisher variance divides by (n - 3), so four per group is the arithmetic floor, not
+    # a statistical recommendation. At 4 vs 4 the standard error of the z
+    # difference is sqrt(2); .warnOnSmallGroups() is where that gets flagged.
     if (length(group1SampleIds) < 4L || length(group2SampleIds) < 4L) {
         stop(
             "Differential correlation requires at least four samples from each group ",
@@ -92,8 +46,13 @@
             call. = FALSE
         )
     }
+    .warnOnSmallGroups(groupLevels, length(group1SampleIds), length(group2SampleIds))
 
-    assayMatrix <- assayMatrix[sharedFeatures, c(group1SampleIds, group2SampleIds), drop = FALSE]
+    assayMatrix <- assayMatrix[
+        sharedFeatures,
+        c(group1SampleIds, group2SampleIds),
+        drop = FALSE
+    ]
     if (nrow(assayMatrix) < 2L) {
         return(.emptyStandardEdgeTable())
     }
@@ -111,42 +70,53 @@
         drop = FALSE
     ]
 
-    designMatrix <- .buildDifferentialCorrelationDesign(
-        group1SampleIds = group1SampleIds,
-        group2SampleIds = group2SampleIds,
-        groupLevels = groupLevels
+    group1Result <- .dispatchCorrelationMethod(
+        assayMatrix = assayMatrix[, group1SampleIds, drop = FALSE],
+        correlationMethod = correlationMethod
     )
-    dgcaResults <- DGCA::ddcorAll(
-        inputMat = assayMatrix,
-        design = designMatrix,
-        compare = groupLevels,
-        corrType = correlationMethod,
-        nPairs = "all",
-        sortBy = "zScoreDiff",
-        adjust = "none",
-        nPerms = 0,
-        classify = FALSE,
-        heatmapPlot = FALSE,
-        verbose = FALSE
+    group2Result <- .dispatchCorrelationMethod(
+        assayMatrix = assayMatrix[, group2SampleIds, drop = FALSE],
+        correlationMethod = correlationMethod
     )
-    dgcaResults <- .asPlainDataFrame(dgcaResults)
-    if (!nrow(dgcaResults)) {
+
+    upperIndex <- upper.tri(group1Result$correlationMatrix, diag = FALSE)
+    group1Correlation <- as.numeric(group1Result$correlationMatrix[upperIndex])
+    group2Correlation <- as.numeric(group2Result$correlationMatrix[upperIndex])
+    group1SampleCount <- as.integer(group1Result$sampleCountMatrix[upperIndex])
+    group2SampleCount <- as.integer(group2Result$sampleCountMatrix[upperIndex])
+    testable <- !is.na(group1Correlation) & !is.na(group2Correlation) &
+        !is.na(group1SampleCount) & !is.na(group2SampleCount) &
+        group1SampleCount >= 4L & group2SampleCount >= 4L
+    if (!any(testable)) {
         return(.emptyStandardEdgeTable())
     }
 
-    group1CorrelationColumn <- .resolveDGCAColumn(dgcaResults, groupLevels[[1L]], "_cor")
-    group2CorrelationColumn <- .resolveDGCAColumn(dgcaResults, groupLevels[[2L]], "_cor")
-    group1PValueColumn <- .resolveDGCAColumn(dgcaResults, groupLevels[[1L]], "_pVal")
-    group2PValueColumn <- .resolveDGCAColumn(dgcaResults, groupLevels[[2L]], "_pVal")
+    fromIdentifiers <- rownames(group1Result$correlationMatrix)[
+        row(group1Result$correlationMatrix)[upperIndex]
+    ][testable]
+    toIdentifiers <- colnames(group1Result$correlationMatrix)[
+        col(group1Result$correlationMatrix)[upperIndex]
+    ][testable]
+    group1Correlation <- group1Correlation[testable]
+    group2Correlation <- group2Correlation[testable]
+    group1SampleCount <- group1SampleCount[testable]
+    group2SampleCount <- group2SampleCount[testable]
+    zScoreDifference <- .fisherCorrelationDifference(
+        group1Correlation = group1Correlation,
+        group1SampleCount = group1SampleCount,
+        group2Correlation = group2Correlation,
+        group2SampleCount = group2SampleCount,
+        correlationMethod = correlationMethod
+    )
 
     rawResults <- data.frame(
-        fromFeatureIdentifier = dgcaResults$Gene1,
-        toFeatureIdentifier = dgcaResults$Gene2,
+        fromFeatureIdentifier = fromIdentifiers,
+        toFeatureIdentifier = toIdentifiers,
         fromFeatureName = featureAnnotations$featureName[
-            match(dgcaResults$Gene1, featureAnnotations$featureIdentifier)
+            match(fromIdentifiers, featureAnnotations$featureIdentifier)
         ],
         toFeatureName = featureAnnotations$featureName[
-            match(dgcaResults$Gene2, featureAnnotations$featureIdentifier)
+            match(toIdentifiers, featureAnnotations$featureIdentifier)
         ],
         fromAssayName = assayName,
         toAssayName = assayName,
@@ -159,18 +129,18 @@
         groupName = NA_character_,
         comparisonName = NA_character_,
         correlationValue = NA_real_,
-        group1CorrelationValue = as.numeric(dgcaResults[[group1CorrelationColumn]]),
-        group2CorrelationValue = as.numeric(dgcaResults[[group2CorrelationColumn]]),
-        pValue = as.numeric(dgcaResults$pValDiff),
+        group1CorrelationValue = group1Correlation,
+        group2CorrelationValue = group2Correlation,
+        pValue = 2 * stats::pnorm(abs(zScoreDifference), lower.tail = FALSE),
         adjustedPValue = NA_real_,
-        group1PValue = as.numeric(dgcaResults[[group1PValueColumn]]),
-        group2PValue = as.numeric(dgcaResults[[group2PValueColumn]]),
+        group1PValue = as.numeric(group1Result$pValueMatrix[upperIndex])[testable],
+        group2PValue = as.numeric(group2Result$pValueMatrix[upperIndex])[testable],
         group1AdjustedPValue = NA_real_,
         group2AdjustedPValue = NA_real_,
-        zScoreDifference = as.numeric(dgcaResults$zScoreDiff),
+        zScoreDifference = zScoreDifference,
         sampleCount = NA_real_,
-        group1SampleCount = length(group1SampleIds),
-        group2SampleCount = length(group2SampleIds),
+        group1SampleCount = group1SampleCount,
+        group2SampleCount = group2SampleCount,
         edgeWeight = NA_real_,
         evidenceScore = NA_real_,
         isDirected = FALSE,
@@ -178,16 +148,15 @@
         check.names = FALSE
     )
 
+    rawResults <- rawResults[
+        order(abs(rawResults$zScoreDifference), decreasing = TRUE),
+        ,
+        drop = FALSE
+    ]
     .coerceStandardEdgeTable(rawResults)
 }
 
-.computeDifferentialCorrelationFromCandidates <- function(
-    analysisData,
-    candidateEdgeTable,
-    group1SampleIds,
-    group2SampleIds,
-    correlationMethod
-) {
+.prepareDifferentialCorrelationCandidates <- function(analysisData, candidateEdgeTable) {
     candidateEdgeTable <- .coerceStandardEdgeTable(candidateEdgeTable)
     if (!nrow(candidateEdgeTable)) {
         return(.emptyStandardEdgeTable())
@@ -202,17 +171,84 @@
         return(.emptyStandardEdgeTable())
     }
 
-    resultList <- vector("list", nrow(candidateData))
+    fromKey <- .nodeKey(
+        candidateData$fromAssayName,
+        candidateData$fromFeatureIdentifier
+    )
+    toKey <- .nodeKey(
+        candidateData$toAssayName,
+        candidateData$toFeatureIdentifier
+    )
+    selfLoop <- fromKey == toKey
+    if (any(selfLoop)) {
+        warning(
+            "Dropping ", sum(selfLoop), " self-loop candidate edge(s); ",
+            "a feature cannot be correlated with itself.",
+            call. = FALSE
+        )
+        candidateData <- candidateData[!selfLoop, , drop = FALSE]
+        fromKey <- fromKey[!selfLoop]
+        toKey <- toKey[!selfLoop]
+    }
+    if (!nrow(candidateData)) {
+        return(.emptyStandardEdgeTable())
+    }
+    candidateKey <- paste(pmin(fromKey, toKey), pmax(fromKey, toKey), sep = "\r")
+    candidateData <- candidateData[!duplicated(candidateKey), , drop = FALSE]
 
-    for (edgeIndex in seq_len(nrow(candidateData))) {
-        edgeRow <- candidateData[edgeIndex, , drop = FALSE]
-        fromMatrix <- .extractAssayMatrix(analysisData, edgeRow$fromAssayName)
-        toMatrix <- .extractAssayMatrix(analysisData, edgeRow$toAssayName)
+    experimentList <- MultiAssayExperiment::experiments(analysisData)
+    featureIds <- lapply(experimentList, rownames)
+    endpointsAvailable <- vapply(
+        seq_len(nrow(candidateData)),
+        function(i) {
+            candidateData$fromFeatureIdentifier[[i]] %in%
+                featureIds[[candidateData$fromAssayName[[i]]]] &&
+                candidateData$toFeatureIdentifier[[i]] %in%
+                    featureIds[[candidateData$toAssayName[[i]]]]
+        },
+        logical(1L)
+    )
+    candidateData <- candidateData[endpointsAvailable, , drop = FALSE]
+    if (!nrow(candidateData)) {
+        return(.emptyStandardEdgeTable())
+    }
 
-        if (!edgeRow$fromFeatureIdentifier %in% rownames(fromMatrix)) {
+    .coerceStandardEdgeTable(candidateData)
+}
+
+.computeDifferentialCorrelationFromCandidates <- function(
+    analysisData,
+    candidateEdgeTable,
+    group1SampleIds,
+    group2SampleIds,
+    correlationMethod
+) {
+    candidateEdgeTable <- .prepareDifferentialCorrelationCandidates(
+        analysisData,
+        candidateEdgeTable
+    )
+    if (!nrow(candidateEdgeTable)) {
+        return(.emptyStandardEdgeTable())
+    }
+    candidateData <- .asPlainDataFrame(candidateEdgeTable)
+
+    # Extraction revalidates the whole matrix, so pull each assay once instead
+    # of twice per candidate edge.
+    usedAssays <- unique(c(candidateData$fromAssayName, candidateData$toAssayName))
+    assayCache <- lapply(usedAssays, function(a) .extractAssayMatrix(analysisData, a))
+    names(assayCache) <- usedAssays
+
+    out <- vector("list", nrow(candidateData))
+
+    for (i in seq_len(nrow(candidateData))) {
+        edge <- candidateData[i, , drop = FALSE]
+        fromMatrix <- assayCache[[edge$fromAssayName]]
+        toMatrix <- assayCache[[edge$toAssayName]]
+
+        if (!edge$fromFeatureIdentifier %in% rownames(fromMatrix)) {
             next
         }
-        if (!edgeRow$toFeatureIdentifier %in% rownames(toMatrix)) {
+        if (!edge$toFeatureIdentifier %in% rownames(toMatrix)) {
             next
         }
 
@@ -225,110 +261,86 @@
             list(group2SampleIds, colnames(fromMatrix), colnames(toMatrix))
         )
 
+        # The Fisher variance divides by (n - 3), so four per group is the arithmetic floor.
+        # It is not a statistical recommendation; see the warning at ten in
+        # testDifferentialCorrelation().
         if (length(group1SharedSamples) < 4L || length(group2SharedSamples) < 4L) {
             next
         }
 
-        group1X <- as.numeric(fromMatrix[edgeRow$fromFeatureIdentifier, group1SharedSamples, drop = TRUE])
-        group1Y <- as.numeric(toMatrix[edgeRow$toFeatureIdentifier, group1SharedSamples, drop = TRUE])
-        group2X <- as.numeric(fromMatrix[edgeRow$fromFeatureIdentifier, group2SharedSamples, drop = TRUE])
-        group2Y <- as.numeric(toMatrix[edgeRow$toFeatureIdentifier, group2SharedSamples, drop = TRUE])
-
-        group1Complete <- stats::complete.cases(group1X, group1Y)
-        group2Complete <- stats::complete.cases(group2X, group2Y)
-        if (sum(group1Complete) < 4L || sum(group2Complete) < 4L) {
-            next
-        }
-
-        group1Arguments <- list(
-            x = group1X[group1Complete],
-            y = group1Y[group1Complete],
-            method = correlationMethod
+        group1Test <- .runCorrelationTest(
+            x = as.numeric(fromMatrix[edge$fromFeatureIdentifier, group1SharedSamples, drop = TRUE]),
+            y = as.numeric(toMatrix[edge$toFeatureIdentifier, group1SharedSamples, drop = TRUE]),
+            correlationMethod = correlationMethod,
+            minimumSampleCount = 4L
         )
-        group2Arguments <- list(
-            x = group2X[group2Complete],
-            y = group2Y[group2Complete],
-            method = correlationMethod
+        group2Test <- .runCorrelationTest(
+            x = as.numeric(fromMatrix[edge$fromFeatureIdentifier, group2SharedSamples, drop = TRUE]),
+            y = as.numeric(toMatrix[edge$toFeatureIdentifier, group2SharedSamples, drop = TRUE]),
+            correlationMethod = correlationMethod,
+            minimumSampleCount = 4L
         )
-        if (!identical(correlationMethod, "pearson")) {
-            group1Arguments$exact <- FALSE
-            group2Arguments$exact <- FALSE
-        }
-
-        group1Test <- tryCatch(
-            suppressWarnings(do.call(stats::cor.test, group1Arguments)),
-            error = function(...) NULL
-        )
-        group2Test <- tryCatch(
-            suppressWarnings(do.call(stats::cor.test, group2Arguments)),
-            error = function(...) NULL
-        )
-
         if (is.null(group1Test) || is.null(group2Test)) {
             next
         }
 
-        group1SampleCount <- sum(group1Complete)
-        group2SampleCount <- sum(group2Complete)
-        group1Correlation <- unname(group1Test$estimate[[1L]])
-        group2Correlation <- unname(group2Test$estimate[[1L]])
-        zScoreDifference <- DGCA::dCorrs(
-            rho1 = .boundCorrelation(group1Correlation),
-            n1 = group1SampleCount,
-            rho2 = .boundCorrelation(group2Correlation),
-            n2 = group2SampleCount,
-            corrType = correlationMethod
+        zScoreDifference <- .fisherCorrelationDifference(
+            group1Correlation = group1Test$correlationValue,
+            group1SampleCount = group1Test$sampleCount,
+            group2Correlation = group2Test$correlationValue,
+            group2SampleCount = group2Test$sampleCount,
+            correlationMethod = correlationMethod
         )
         pValueDifference <- 2 * stats::pnorm(abs(zScoreDifference), lower.tail = FALSE)
 
-        resultList[[edgeIndex]] <- data.frame(
-            fromFeatureIdentifier = edgeRow$fromFeatureIdentifier,
-            toFeatureIdentifier = edgeRow$toFeatureIdentifier,
-            fromFeatureName = edgeRow$fromFeatureName,
-            toFeatureName = edgeRow$toFeatureName,
-            fromAssayName = edgeRow$fromAssayName,
-            toAssayName = edgeRow$toAssayName,
-            edgeType = edgeRow$edgeType,
+        out[[i]] <- data.frame(
+            fromFeatureIdentifier = edge$fromFeatureIdentifier,
+            toFeatureIdentifier = edge$toFeatureIdentifier,
+            fromFeatureName = edge$fromFeatureName,
+            toFeatureName = edge$toFeatureName,
+            fromAssayName = edge$fromAssayName,
+            toAssayName = edge$toAssayName,
+            edgeType = edge$edgeType,
             edgeDirection = NA_character_,
             sourceType = "differentialCorrelationTest",
-            correlationScope = if (!is.na(edgeRow$correlationScope) && nzchar(edgeRow$correlationScope)) {
-                edgeRow$correlationScope
-            } else if (identical(edgeRow$fromAssayName, edgeRow$toAssayName)) {
+            correlationScope = if (!is.na(edge$correlationScope) && nzchar(edge$correlationScope)) {
+                edge$correlationScope
+            } else if (identical(edge$fromAssayName, edge$toAssayName)) {
                 "withinOmic"
             } else {
                 "crossOmic"
             },
             correlationMethod = correlationMethod,
-            knowledgeSource = edgeRow$knowledgeSource,
+            knowledgeSource = edge$knowledgeSource,
             groupName = NA_character_,
             comparisonName = NA_character_,
             correlationValue = NA_real_,
-            group1CorrelationValue = group1Correlation,
-            group2CorrelationValue = group2Correlation,
+            group1CorrelationValue = group1Test$correlationValue,
+            group2CorrelationValue = group2Test$correlationValue,
             pValue = pValueDifference,
             adjustedPValue = NA_real_,
-            group1PValue = unname(group1Test$p.value),
-            group2PValue = unname(group2Test$p.value),
+            group1PValue = group1Test$pValue,
+            group2PValue = group2Test$pValue,
             group1AdjustedPValue = NA_real_,
             group2AdjustedPValue = NA_real_,
             zScoreDifference = zScoreDifference,
             sampleCount = NA_real_,
-            group1SampleCount = group1SampleCount,
-            group2SampleCount = group2SampleCount,
+            group1SampleCount = group1Test$sampleCount,
+            group2SampleCount = group2Test$sampleCount,
             edgeWeight = NA_real_,
-            evidenceScore = edgeRow$evidenceScore,
+            evidenceScore = edge$evidenceScore,
             isDirected = FALSE,
             stringsAsFactors = FALSE,
             check.names = FALSE
         )
     }
 
-    resultList <- Filter(Negate(is.null), resultList)
-    if (!length(resultList)) {
+    out <- Filter(Negate(is.null), out)
+    if (!length(out)) {
         return(.emptyStandardEdgeTable())
     }
 
-    .coerceStandardEdgeTable(do.call(rbind, resultList))
+    .coerceStandardEdgeTable(do.call(rbind, out))
 }
 
 .finalizeDifferentialCorrelationResults <- function(
@@ -361,17 +373,29 @@
             abs(edgeData$group2CorrelationValue) >= minimumAbsoluteCorrelation
     }
 
-    retainForAdjustment <- group1Strong | group2Strong
-    edgeData <- edgeData[retainForAdjustment, , drop = FALSE]
-    group1Strong <- group1Strong[retainForAdjustment]
-    group2Strong <- group2Strong[retainForAdjustment]
+    # Adjustment must cover the full set of tested hypotheses. Filtering first
+    # on |r| would select on a quantity tied directly to the p-value and make
+    # the resulting BH values anti-conservative.
+    edgeData$group1AdjustedPValue <- .adjustPValuesWithMissing(
+        edgeData$group1PValue,
+        pAdjustMethod
+    )
+    edgeData$group2AdjustedPValue <- .adjustPValuesWithMissing(
+        edgeData$group2PValue,
+        pAdjustMethod
+    )
+    edgeData$adjustedPValue <- .adjustPValuesWithMissing(
+        edgeData$pValue,
+        pAdjustMethod
+    )
+
+    retainForScoring <- group1Strong | group2Strong
+    edgeData <- edgeData[retainForScoring, , drop = FALSE]
+    group1Strong <- group1Strong[retainForScoring]
+    group2Strong <- group2Strong[retainForScoring]
     if (!nrow(edgeData)) {
         return(.emptyStandardEdgeTable())
     }
-
-    edgeData$group1AdjustedPValue <- .adjustDifferentialPValues(edgeData$group1PValue, pAdjustMethod)
-    edgeData$group2AdjustedPValue <- .adjustDifferentialPValues(edgeData$group2PValue, pAdjustMethod)
-    edgeData$adjustedPValue <- .adjustDifferentialPValues(edgeData$pValue, pAdjustMethod)
 
     if (!is.null(adjustedPValueThreshold)) {
         group1Supported <- group1Strong &
@@ -395,6 +419,13 @@
     group2CorrelationValue,
     minimumAbsoluteCorrelation
 ) {
+    # A group with no variance in one feature yields no correlation at all,
+    # which is not the same as a correlation of zero. Refuse to label it rather
+    # than letting NA reach the `if` conditions below.
+    if (is.na(group1CorrelationValue) || is.na(group2CorrelationValue)) {
+        return(NA_character_)
+    }
+
     presentInGroup1 <- abs(group1CorrelationValue) >= minimumAbsoluteCorrelation
     presentInGroup2 <- abs(group2CorrelationValue) >= minimumAbsoluteCorrelation
 
@@ -433,8 +464,8 @@
 #'
 #' Compute differential correlation statistics for either all within-omic
 #' feature pairs in one assay or a supplied set of candidate edges.
-#' Within-omic all-pairs testing uses DGCA, while candidate-edge testing
-#' evaluates only the supplied edges.
+#' All-pairs testing evaluates every within-omic pair, while candidate-edge
+#' testing evaluates only the supplied edges.
 #'
 #' @param analysisData A `MultiAssayExperiment`.
 #' @param groupColumn Sample metadata column used to define the two
@@ -445,32 +476,97 @@
 #' @param assayName Assay name used when testing all within-omic pairs.
 #' @param candidateEdgeTable Optional candidate edges to test. May be a
 #'   standardized CorNetto edge table or a validated knowledge network.
+#'   Candidate self-loops are omitted with a warning because a feature's
+#'   correlation with itself is not an informative differential edge.
 #' @param featureSubset Optional feature subset used when `assayName` is
 #'   supplied.
 #' @param correlationMethod Correlation method. Differential correlation
 #'   currently supports `"pearson"` and `"spearman"`.
 #' @param minimumAbsoluteCorrelation Minimum absolute correlation that
-#'   must be present in at least one group before multiple-testing
-#'   correction and edge retention.
+#'   must be present in at least one group for edge retention. P-values are
+#'   adjusted over the full testable family before this filter is applied.
 #' @param adjustedPValueThreshold Maximum within-group adjusted p-value
 #'   that must be reached in the same group as the correlation threshold
 #'   before an edge is kept. Set `NULL` to skip within-group significance
 #'   filtering after the correlation prefilter.
-#' @param pAdjustMethod Multiple-testing correction method.
+#' @param pAdjustMethod Multiple-testing correction method. Use one of
+#'   `stats::p.adjust.methods` or `"qvalue"`; the latter requires the suggested
+#'   `qvalue` package.
 #' @param featureNameColumn Row-data column containing display names.
 #' @param resultName Optional name used when storing the result.
 #' @param storeResult Whether to store the result in `analysisData`.
 #'
 #' @return A standardized edge `DataFrame` or an updated
 #'   `MultiAssayExperiment`.
-#' @details Edges are first filtered to pairs with sufficient absolute
-#'   correlation in at least one group. Within-group and differential
-#'   p-values are then adjusted on this retained edge universe. When
+#' @details Within-group and differential p-values are adjusted over all
+#'   testable pairs before any correlation-strength filter is applied. Edges
+#'   are then filtered to pairs with sufficient absolute correlation in at
+#'   least one group. When
 #'   `adjustedPValueThreshold` is not `NULL`, an edge is retained only if
 #'   the same group is both sufficiently correlated and significant after
-#'   multiple-testing correction. This rewiring-first behavior creates a
-#'   stable scoring network without requiring every edge to pass a
-#'   differential-correlation p-value threshold.
+#'   multiple-testing correction. Differential-correlation adjusted p-values
+#'   are reported but are not used for retention unless requested later by
+#'   [createDifferentialCorrelationNetwork()].
+#'
+#'   Candidate edges are treated as undirected hypotheses. Self-loops are
+#'   removed with a warning, and duplicate or mirrored rows are tested once,
+#'   using the first occurrence.
+#'
+#'   The statistic is the Fisher z difference between two independent
+#'   correlations, evaluated against a standard normal:
+#'
+#'   \deqn{z = (atanh(r2) - atanh(r1)) / sqrt(1/(n1 - 3) + 1/(n2 - 3))}
+#'
+#'   For `correlationMethod = "spearman"` the variance term is inflated by 1.06
+#'   following Fieller, Hartley and Pearson (1957).
+#'
+#'   Sample correlations of exactly -1 or 1 make the Fisher transform
+#'   infinite. CorNetto bounds them to `-1 + 1e-6` or `1 - 1e-6` before the
+#'   transform. This keeps the statistic finite but makes results for perfectly
+#'   collinear pairs sensitive to that numerical convention.
+#'
+#'   Mind the direction. The subtraction is group 2 minus group 1, so a
+#'   **positive** `zScoreDifference` means the pair is more strongly correlated
+#'   in `groupLevels[2]`. This is the opposite orientation to the
+#'   `edgeDirection` labels from [createDifferentialCorrelationNetwork()],
+#'   which are named from group 1's point of view (`gainInGroup1` marks a pair
+#'   correlated in group 1 and not in group 2, and therefore carries a negative
+#'   z). The magnitude, the p-value, and every rewiring score are unaffected by
+#'   the convention, since they square or take the absolute value of `z`; only
+#'   `edgeWeight` under `edgeWeightMethod = "signedZScore"` exposes the sign.
+#'
+#'   This carries assumptions that omic data routinely violate, and the
+#'   package does not test them for you:
+#'
+#'   - Pearson z tests assume each pair is approximately bivariate normal.
+#'     Log-abundance proteomics and metabolomics are often heavy-tailed or
+#'     left-censored, where the approximation is anticonservative. Use
+#'     `correlationMethod = "spearman"` for heavy-tailed, monotone
+#'     non-linear, or rank-robust analyses; Pearson remains the default
+#'     because it is conventional for normalized log-scale omics.
+#'   - The two groups must be independent. Repeated measurements on the same
+#'     subject in both groups break this.
+#'   - The variance term divides by `n - 3`, so four samples per group is the
+#'     arithmetic floor and the function stops below it. That floor is not a
+#'     recommendation: at four per group the standard error of the z
+#'     difference is `sqrt(2)`. A warning is emitted below ten samples per
+#'     group, and results there should be read as descriptive.
+#'
+#'   Correlations use pairwise complete observations, so each edge carries its
+#'   own effective sample size in `group1SampleCount` and `group2SampleCount`.
+#'   Pairs where a feature is constant within a group yield no correlation and
+#'   are dropped.
+#' @references
+#' Fisher RA (1921). On the "probable error" of a coefficient of correlation
+#' deduced from a small sample. \emph{Metron}, 1, 3-32.
+#'
+#' Fieller EC, Hartley HO, Pearson ES (1957). Tests for rank correlation
+#' coefficients I. \emph{Biometrika}, 44, 470-481.
+#' \doi{10.1093/biomet/44.3-4.470}
+#'
+#' Benjamini Y, Hochberg Y (1995). Controlling the false discovery rate.
+#' \emph{Journal of the Royal Statistical Society B}, 57, 289-300.
+#' \doi{10.1111/j.2517-6161.1995.tb02031.x}
 #' @examples
 #' analysisData <- exampleAnalysisData()
 #' differentialTable <- testDifferentialCorrelation(
@@ -502,9 +598,20 @@ testDifferentialCorrelation <- function(
 ) {
     analysisData <- validateAnalysisData(analysisData, quiet = TRUE)
     correlationMethod <- match.arg(correlationMethod)
-    if (length(groupLevels) != 2L) {
-        stop("`groupLevels` must contain exactly two group labels.", call. = FALSE)
-    }
+    groupLevels <- .assertTwoGroupLevels(groupLevels)
+    minimumAbsoluteCorrelation <- .validateUnitInterval(
+        minimumAbsoluteCorrelation,
+        "minimumAbsoluteCorrelation",
+        allowNull = TRUE
+    )
+    adjustedPValueThreshold <- .validateUnitInterval(
+        adjustedPValueThreshold,
+        "adjustedPValueThreshold",
+        allowNull = TRUE
+    )
+    pAdjustMethod <- .validatePAdjustMethod(pAdjustMethod)
+    .assertScalarCharacter(featureNameColumn, "featureNameColumn")
+    .assertScalarLogical(storeResult, "storeResult")
 
     group1SampleIds <- .resolveGroupSamples(
         analysisData = analysisData,
@@ -516,15 +623,6 @@ testDifferentialCorrelation <- function(
         groupColumn = groupColumn,
         groupLevel = groupLevels[[2L]]
     )
-    if (length(group1SampleIds) < 10L || length(group2SampleIds) < 10L) {
-        warning(
-            "Differential correlation group sizes are below 10 samples for at least one group: ",
-            groupLevels[[1L]], " = ", length(group1SampleIds), ", ",
-            groupLevels[[2L]], " = ", length(group2SampleIds),
-            ". Correlation estimates are unstable below 10 samples per group.",
-            call. = FALSE
-        )
-    }
 
     if (is.null(candidateEdgeTable) && !is.null(featureSubset) && !length(featureSubset)) {
         rawResults <- .emptyStandardEdgeTable()
@@ -551,7 +649,7 @@ testDifferentialCorrelation <- function(
             assayName = assayName,
             featureSubset = featureSubset
         )
-        rawResults <- .computeDifferentialCorrelationDGCA(
+        rawResults <- .computeDifferentialCorrelationAllPairs(
             analysisData = analysisData,
             assayName = assayName,
             sharedFeatures = sharedFeatures,
@@ -562,6 +660,7 @@ testDifferentialCorrelation <- function(
             featureNameColumn = featureNameColumn
         )
     } else {
+        .warnOnSmallGroups(groupLevels, length(group1SampleIds), length(group2SampleIds))
         candidateEdgeTable <- .coerceStandardEdgeTable(candidateEdgeTable)
         rawResults <- .computeDifferentialCorrelationFromCandidates(
             analysisData = analysisData,
@@ -609,15 +708,34 @@ testDifferentialCorrelation <- function(
 #'   default `NULL` keeps all rewiring-scoring edges returned by
 #'   `testDifferentialCorrelation()`.
 #' @param minimumAbsoluteCorrelation Minimum absolute correlation used to
-#'   classify gains, losses, sign flips, and strengthening or weakening.
+#'   classify gains, losses, sign flips, and strengthening or weakening. Note
+#'   that this is independent of the prefilter applied by
+#'   [testDifferentialCorrelation()]: if you change one, change the other, or
+#'   the labels will disagree with which edges are present.
 #' @param edgeWeightMethod Method used to generate the edge weight.
+#'   `"signedZScore"` keeps the sign of `zScoreDifference`; `"absoluteZScore"`
+#'   takes its magnitude. See Details for what the sign means.
 #' @param analysisData Optional `MultiAssayExperiment` used to store the
 #'   weighted differential network.
 #' @param resultName Name used when storing the weighted differential
 #'   network.
 #' @param storeResult Whether to store the result in `analysisData`.
 #'
-#' @return A standardized edge `DataFrame`.
+#' @return A standardized edge `DataFrame`, or the updated
+#'   `MultiAssayExperiment` when `storeResult = TRUE`.
+#' @details `edgeWeightMethod` does not affect any rewiring score, because
+#'   [calculateRewiringScores()] squares the weight. It matters only when you
+#'   read or export `edgeWeight` directly.
+#'
+#'   Under `"signedZScore"` the weight inherits the Fisher statistic's
+#'   group-2-minus-group-1 orientation: a **positive**
+#'   weight means the pair is more strongly correlated in the second of the
+#'   `groupLevels` passed to [testDifferentialCorrelation()]. The
+#'   `edgeDirection` labels run the other way, being named from group 1's point
+#'   of view, so `gainInGroup1` edges carry negative weights.
+#'
+#'   `edgeDirection` is `NA` when either group has no correlation to compare,
+#'   which happens when a feature is constant within that group.
 #' @examples
 #' analysisData <- exampleAnalysisData()
 #' differentialTable <- testDifferentialCorrelation(
@@ -646,6 +764,16 @@ createDifferentialCorrelationNetwork <- function(
     storeResult = FALSE
 ) {
     edgeWeightMethod <- match.arg(edgeWeightMethod)
+    differenceAdjustedPValueThreshold <- .validateUnitInterval(
+        differenceAdjustedPValueThreshold,
+        "differenceAdjustedPValueThreshold",
+        allowNull = TRUE
+    )
+    minimumAbsoluteCorrelation <- .validateUnitInterval(
+        minimumAbsoluteCorrelation,
+        "minimumAbsoluteCorrelation"
+    )
+    .assertScalarLogical(storeResult, "storeResult")
     differentialCorrelationTable <- .coerceStandardEdgeTable(differentialCorrelationTable)
 
     if (!nrow(differentialCorrelationTable)) {
@@ -663,15 +791,6 @@ createDifferentialCorrelationNetwork <- function(
 
     edgeData <- .asPlainDataFrame(differentialCorrelationTable)
     if (!is.null(differenceAdjustedPValueThreshold)) {
-        if (!is.numeric(differenceAdjustedPValueThreshold) ||
-            length(differenceAdjustedPValueThreshold) != 1L ||
-            is.na(differenceAdjustedPValueThreshold) ||
-            differenceAdjustedPValueThreshold < 0) {
-            stop(
-                "`differenceAdjustedPValueThreshold` must be NULL or a non-negative numeric scalar.",
-                call. = FALSE
-            )
-        }
         keepIndex <- !is.na(edgeData$adjustedPValue) &
             edgeData$adjustedPValue <= differenceAdjustedPValueThreshold
         edgeData <- edgeData[keepIndex, , drop = FALSE]
@@ -692,10 +811,10 @@ createDifferentialCorrelationNetwork <- function(
 
     edgeData$edgeDirection <- vapply(
         seq_len(nrow(edgeData)),
-        function(edgeIndex) {
+        function(i) {
             .classifyCorrelationChange(
-                group1CorrelationValue = edgeData$group1CorrelationValue[[edgeIndex]],
-                group2CorrelationValue = edgeData$group2CorrelationValue[[edgeIndex]],
+                group1CorrelationValue = edgeData$group1CorrelationValue[[i]],
+                group2CorrelationValue = edgeData$group2CorrelationValue[[i]],
                 minimumAbsoluteCorrelation = minimumAbsoluteCorrelation
             )
         },
@@ -725,32 +844,50 @@ createDifferentialCorrelationNetwork <- function(
     )
 }
 
-.computeDegreeMatchedScores <- function(rawRewiringScore, totalConnections) {
+.computeDegreeMatchedScores <- function(rawRewiringScore, totalConnections,
+                                        minimumBinSize = 5L) {
+    logDegree <- log2(totalConnections + 1)
     degreeBins <- cut(
-        x = log2(totalConnections + 1),
-        breaks = seq(
-            from = 0,
-            to = max(log2(totalConnections + 1)) + 1,
-            by = 1
-        ),
+        x = logDegree,
+        breaks = seq(from = 0, to = max(logDegree) + 1, by = 1),
         include.lowest = TRUE
     )
-    zScores <- rawRewiringScore
+    zScores <- rep(NA_real_, length(rawRewiringScore))
 
-    for (binName in unique(degreeBins)) {
-        binIndex <- degreeBins == binName
+    for (binName in levels(degreeBins)) {
+        binIndex <- which(degreeBins == binName)
         binValues <- rawRewiringScore[binIndex]
-        if (length(unique(binValues)) == 1L) {
-            zScores[binIndex] <- 0
-        } else {
-            zScores[binIndex] <- as.numeric(scale(binValues))
+        # Too few nodes cannot support a within-bin standardisation: with two
+        # nodes scale() returns +/-0.707 whatever the data says. Leave those
+        # missing rather than reporting a number that only looks like evidence.
+        if (length(binIndex) < minimumBinSize || length(unique(binValues)) == 1L) {
+            next
         }
+        zScores[binIndex] <- as.numeric(scale(binValues))
     }
 
     list(
         degreeBin = degreeBins,
         degreeMatchedZScore = zScores
     )
+}
+
+.checkScoringEdges <- function(edgeData) {
+    keyOne <- .nodeKey(edgeData$fromAssayName, edgeData$fromFeatureIdentifier)
+    keyTwo <- .nodeKey(edgeData$toAssayName, edgeData$toFeatureIdentifier)
+    if (any(keyOne == keyTwo)) {
+        stop("Rewiring scores cannot be calculated from self-loops.", call. = FALSE)
+    }
+
+    edgeKey <- paste(pmin(keyOne, keyTwo), pmax(keyOne, keyTwo), sep = "\r")
+    if (anyDuplicated(edgeKey)) {
+        stop(
+            "Rewiring scores require one row per edge; duplicate or mirrored edges were found.",
+            call. = FALSE
+        )
+    }
+
+    invisible(NULL)
 }
 
 .fillMissingRewiringNodeNames <- function(rewiringTable, nodeTable) {
@@ -777,6 +914,36 @@ createDifferentialCorrelationNetwork <- function(
 #'
 #' @return A `DataFrame` of rewiring scores or an updated
 #'   `MultiAssayExperiment`.
+#' @details These are descriptive CorNetto scores, not tests. None of them is
+#'   a p-value, and `degreeMatchedZScore` is not a z-score against any null
+#'   model. [permuteRewiringScores()] supplies a randomization p-value only
+#'   under its documented fixed-universe and exchangeability conditions;
+#'   otherwise it returns conditional rankings.
+#'
+#'   For a node with incident differential z-scores `z_1, ..., z_k`:
+#'
+#'   - `rawRewiringScore` is the L2 norm `sqrt(sum(z_i^2))`. It grows with
+#'     degree: if the `z_i` were independent standard normals, `sum(z_i^2)`
+#'     would follow a chi-square distribution on `k` degrees of freedom. Its
+#'     squared score would then have expectation `k`, and the score itself
+#'     would grow roughly as `sqrt(k)`. Edges sharing a node are not
+#'     independent, so treat that only as intuition for the scaling.
+#'   - `rootMeanSquareRewiringScore` divides by `sqrt(k)`, which removes most
+#'     of that degree dependence. Under the same rough argument its squared
+#'     value has expectation 1; the score itself is biased below 1 at small
+#'     `k` and approaches 1 as degree grows. This is the most comparable score
+#'     across nodes of different degree.
+#'   - `degreeMatchedZScore` standardizes `rawRewiringScore` within bins of
+#'     `log2(degree + 1)`. It is a within-bin ranking aid only. Roughly half
+#'     the nodes in every bin are negative by construction, and the scale is
+#'     not comparable across bins, so a bin holding few nodes cannot produce a
+#'     meaningful spread. Bins with fewer than five nodes, or with no spread,
+#'     return `NA`.
+#'
+#'   The network must contain one row per edge and no self-loops. Duplicate or
+#'   mirrored edges would change both the degree and the score, so the function
+#'   stops when either is detected. Score the network before calling
+#'   [combineNetworks()] with `includeReverseEdges = TRUE`.
 #' @examples
 #' analysisData <- exampleAnalysisData()
 #' differentialTable <- testDifferentialCorrelation(
@@ -802,6 +969,7 @@ calculateRewiringScores <- function(
     resultName = "rewiringScores",
     storeResult = FALSE
 ) {
+    .assertScalarLogical(storeResult, "storeResult")
     differentialCorrelationNetwork <- .coerceStandardEdgeTable(differentialCorrelationNetwork)
     if (!nrow(differentialCorrelationNetwork)) {
         rewiringTable <- S4Vectors::DataFrame(
@@ -825,6 +993,13 @@ calculateRewiringScores <- function(
     }
 
     edgeData <- .asPlainDataFrame(differentialCorrelationNetwork)
+    if (anyNA(edgeData$edgeWeight) || any(!is.finite(edgeData$edgeWeight))) {
+        stop(
+            "`differentialCorrelationNetwork$edgeWeight` must contain finite, non-missing values.",
+            call. = FALSE
+        )
+    }
+    .checkScoringEdges(edgeData)
     longTable <- rbind(
         data.frame(
             nodeKey = .nodeKey(edgeData$fromAssayName, edgeData$fromFeatureIdentifier),
@@ -845,28 +1020,31 @@ calculateRewiringScores <- function(
     )
 
     nodeKeys <- unique(longTable$nodeKey)
-    rewiringTable <- lapply(
-        nodeKeys,
-        function(nodeKey) {
-            nodeWeights <- longTable$edgeWeight[longTable$nodeKey %in% nodeKey]
-            totalConnections <- length(nodeWeights)
-            rawRewiringScore <- sqrt(sum(nodeWeights ^ 2, na.rm = TRUE))
-            rootMeanSquareRewiringScore <- rawRewiringScore / sqrt(totalConnections)
+    weightsByNode <- split(
+        longTable$edgeWeight,
+        factor(longTable$nodeKey, levels = nodeKeys)
+    )
+    firstRow <- match(nodeKeys, longTable$nodeKey)
 
-            data.frame(
-                nodeKey = nodeKey,
-                nodeIdentifier = longTable$nodeIdentifier[match(nodeKey, longTable$nodeKey)],
-                nodeName = longTable$nodeName[match(nodeKey, longTable$nodeKey)],
-                assayName = longTable$assayName[match(nodeKey, longTable$nodeKey)],
-                totalConnections = totalConnections,
-                rawRewiringScore = rawRewiringScore,
-                rootMeanSquareRewiringScore = rootMeanSquareRewiringScore,
-                stringsAsFactors = FALSE
-            )
-        }
+    totalConnections <- lengths(weightsByNode)
+    rawRewiringScore <- vapply(
+        weightsByNode,
+        function(w) sqrt(sum(w ^ 2)),
+        numeric(1L)
     )
 
-    rewiringTable <- do.call(rbind, rewiringTable)
+    rewiringTable <- data.frame(
+        nodeKey = nodeKeys,
+        nodeIdentifier = longTable$nodeIdentifier[firstRow],
+        nodeName = longTable$nodeName[firstRow],
+        assayName = longTable$assayName[firstRow],
+        totalConnections = as.integer(totalConnections),
+        rawRewiringScore = as.numeric(rawRewiringScore),
+        rootMeanSquareRewiringScore = as.numeric(rawRewiringScore / sqrt(totalConnections)),
+        stringsAsFactors = FALSE,
+        row.names = NULL
+    )
+
     degreeMatched <- .computeDegreeMatchedScores(
         rawRewiringScore = rewiringTable$rawRewiringScore,
         totalConnections = rewiringTable$totalConnections

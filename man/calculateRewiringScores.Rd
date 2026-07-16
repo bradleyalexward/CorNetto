@@ -30,6 +30,39 @@ A \code{DataFrame} of rewiring scores or an updated
 Calculate raw, RMS-normalized, and degree-matched rewiring scores from
 a weighted differential-correlation network.
 }
+\details{
+These are descriptive CorNetto scores, not tests. None of them is
+a p-value, and \code{degreeMatchedZScore} is not a z-score against any null
+model. \code{\link[=permuteRewiringScores]{permuteRewiringScores()}} supplies a randomization p-value only
+under its documented fixed-universe and exchangeability conditions;
+otherwise it returns conditional rankings.
+
+For a node with incident differential z-scores \verb{z_1, ..., z_k}:
+\itemize{
+\item \code{rawRewiringScore} is the L2 norm \code{sqrt(sum(z_i^2))}. It grows with
+degree: if the \code{z_i} were independent standard normals, \code{sum(z_i^2)}
+would follow a chi-square distribution on \code{k} degrees of freedom. Its
+squared score would then have expectation \code{k}, and the score itself
+would grow roughly as \code{sqrt(k)}. Edges sharing a node are not
+independent, so treat that only as intuition for the scaling.
+\item \code{rootMeanSquareRewiringScore} divides by \code{sqrt(k)}, which removes most
+of that degree dependence. Under the same rough argument its squared
+value has expectation 1; the score itself is biased below 1 at small
+\code{k} and approaches 1 as degree grows. This is the most comparable score
+across nodes of different degree.
+\item \code{degreeMatchedZScore} standardizes \code{rawRewiringScore} within bins of
+\code{log2(degree + 1)}. It is a within-bin ranking aid only. Roughly half
+the nodes in every bin are negative by construction, and the scale is
+not comparable across bins, so a bin holding few nodes cannot produce a
+meaningful spread. Bins with fewer than five nodes, or with no spread,
+return \code{NA}.
+}
+
+The network must contain one row per edge and no self-loops. Duplicate or
+mirrored edges would change both the degree and the score, so the function
+stops when either is detected. Score the network before calling
+\code{\link[=combineNetworks]{combineNetworks()}} with \code{includeReverseEdges = TRUE}.
+}
 \examples{
 analysisData <- exampleAnalysisData()
 differentialTable <- testDifferentialCorrelation(

@@ -69,6 +69,9 @@
     "isDirected"
 }
 
+## Adjust only the p-values that exist, and put NA back where there was no
+## test to begin with. p.adjust() would otherwise count untestable pairs in
+## the denominator.
 .adjustPValuesWithMissing <- function(pValues, pAdjustMethod) {
     adjustedValues <- rep(NA_real_, length(pValues))
     keepIndex <- !is.na(pValues)
@@ -108,6 +111,18 @@
     adjustedValues
 }
 
+## One string per edge row, for exact-match comparisons between tables.
+.edgeRowKey <- function(edgeData) {
+    columns <- lapply(edgeData[.standardEdgeColumns()], as.character)
+    do.call(paste, c(columns, sep = "\r"))
+}
+
+.fillBlank <- function(x, replacement) {
+    x <- as.character(x)
+    x[is.na(x) | !nzchar(x)] <- replacement
+    x
+}
+
 .standardNodeColumns <- function() {
     c(
         "nodeKey",
@@ -127,6 +142,10 @@
 
 .coerceNumericMatrixStrict <- function(x, context = "assay matrix") {
     originalMatrix <- as.matrix(x)
+    if (is.complex(originalMatrix) &&
+        any(!is.na(originalMatrix) & Im(originalMatrix) != 0)) {
+        stop("Complex values were found in ", context, ".", call. = FALSE)
+    }
     originalMissing <- is.na(originalMatrix)
     numericMatrix <- originalMatrix
     suppressWarnings(storage.mode(numericMatrix) <- "numeric")
@@ -155,12 +174,53 @@
         )
     }
 
-    nonFinite <- !is.na(numericMatrix) & !is.finite(numericMatrix)
+    nonFinite <- is.nan(numericMatrix) | is.infinite(numericMatrix)
     if (any(nonFinite)) {
         stop("Non-finite values were found in ", context, ".", call. = FALSE)
     }
 
     numericMatrix
+}
+
+.coerceNumericColumn <- function(x, columnName) {
+    if (is.factor(x)) {
+        x <- as.character(x)
+    }
+    if (is.complex(x) && any(!is.na(x) & Im(x) != 0)) {
+        stop("Column `", columnName, "` cannot contain complex values.", call. = FALSE)
+    }
+
+    missingValue <- is.na(x)
+    if (is.character(x)) {
+        missingValue <- missingValue | !nzchar(trimws(x))
+        x[missingValue] <- NA_character_
+    }
+    numericValue <- suppressWarnings(as.numeric(x))
+    if (any(is.na(numericValue) & !missingValue)) {
+        stop("Column `", columnName, "` must contain numeric values.", call. = FALSE)
+    }
+    if (any(is.nan(numericValue) | is.infinite(numericValue))) {
+        stop("Column `", columnName, "` cannot contain non-finite values.", call. = FALSE)
+    }
+
+    numericValue
+}
+
+.coerceLogicalColumn <- function(x, columnName) {
+    if (is.factor(x)) {
+        x <- as.character(x)
+    }
+    missingValue <- is.na(x)
+    if (is.character(x)) {
+        missingValue <- missingValue | !nzchar(trimws(x))
+        x[missingValue] <- NA_character_
+    }
+    logicalValue <- suppressWarnings(as.logical(x))
+    if (any(is.na(logicalValue) & !missingValue)) {
+        stop("Column `", columnName, "` must contain logical values.", call. = FALSE)
+    }
+
+    logicalValue
 }
 
 .hasAutomaticRowNames <- function(x) {
@@ -186,42 +246,41 @@
     )
 }
 
-.coerceStandardNodeTable <- function(nodeTable) {
+.coerceStandardNodeTable <- function(nodeTable, preserveExtraColumns = FALSE) {
     if (is.null(nodeTable)) {
         return(.emptyStandardNodeTable())
     }
 
     nodeTable <- .asPlainDataFrame(nodeTable)
     nodeColumns <- .standardNodeColumns()
+    extraColumns <- if (isTRUE(preserveExtraColumns)) {
+        setdiff(names(nodeTable), nodeColumns)
+    } else {
+        character()
+    }
 
     for (columnName in nodeColumns) {
         if (!columnName %in% names(nodeTable)) {
-            nodeTable[[columnName]] <- NA_character_
+            nodeTable[[columnName]] <- rep(NA_character_, nrow(nodeTable))
         }
     }
 
-    nodeTable <- nodeTable[, nodeColumns, drop = FALSE]
+    nodeTable <- nodeTable[, c(nodeColumns, extraColumns), drop = FALSE]
     for (columnName in nodeColumns) {
         nodeTable[[columnName]] <- as.character(nodeTable[[columnName]])
         nodeTable[[columnName]][is.na(nodeTable[[columnName]])] <- NA_character_
     }
 
     if (nrow(nodeTable)) {
-        nodeTable$nodeKey[
-            is.na(nodeTable$nodeKey) | !nzchar(nodeTable$nodeKey)
-        ] <- .nodeKey(
-            assayName = nodeTable$assayName[
-                is.na(nodeTable$nodeKey) | !nzchar(nodeTable$nodeKey)
-            ],
-            featureIdentifier = nodeTable$nodeIdentifier[
-                is.na(nodeTable$nodeKey) | !nzchar(nodeTable$nodeKey)
-            ]
+        needsKey <- is.na(nodeTable$nodeKey) | !nzchar(nodeTable$nodeKey)
+        nodeTable$nodeKey[needsKey] <- .nodeKey(
+            assayName = nodeTable$assayName[needsKey],
+            featureIdentifier = nodeTable$nodeIdentifier[needsKey]
         )
-        nodeTable$nodeName[
-            is.na(nodeTable$nodeName) | !nzchar(nodeTable$nodeName)
-        ] <- nodeTable$nodeIdentifier[
-            is.na(nodeTable$nodeName) | !nzchar(nodeTable$nodeName)
-        ]
+
+        needsName <- is.na(nodeTable$nodeName) | !nzchar(nodeTable$nodeName)
+        nodeTable$nodeName[needsName] <- nodeTable$nodeIdentifier[needsName]
+
         nodeTable <- nodeTable[!duplicated(nodeTable$nodeKey), , drop = FALSE]
     }
 
@@ -281,10 +340,17 @@
     edgeTable
 }
 
-.getStoredNodeTable <- function(edgeTable, fallbackToEdges = FALSE) {
+.getStoredNodeTable <- function(
+    edgeTable,
+    fallbackToEdges = FALSE,
+    preserveExtraColumns = FALSE
+) {
     storedMetadata <- .getStoredNetworkMetadata(edgeTable)
     if ("nodeTable" %in% names(storedMetadata)) {
-        return(.coerceStandardNodeTable(storedMetadata$nodeTable))
+        return(.coerceStandardNodeTable(
+            storedMetadata$nodeTable,
+            preserveExtraColumns = preserveExtraColumns
+        ))
     }
 
     if (isTRUE(fallbackToEdges)) {
@@ -382,6 +448,17 @@
     )
 }
 
+.missingEdgeColumn <- function(columnName, numberOfRows) {
+    if (columnName %in% .numericEdgeColumns()) {
+        return(rep(NA_real_, numberOfRows))
+    }
+    if (columnName %in% .logicalEdgeColumns()) {
+        return(rep(NA, numberOfRows))
+    }
+
+    rep(NA_character_, numberOfRows)
+}
+
 .coerceStandardEdgeTable <- function(edgeTable, nodeTable = NULL) {
     if (is.null(edgeTable)) {
         return(.emptyStandardEdgeTable())
@@ -392,11 +469,7 @@
         preservedNodeTable <- .getStoredNodeTable(edgeTable, fallbackToEdges = FALSE)
     }
 
-    if (methods::is(edgeTable, "DataFrame")) {
-        edgeTable <- .asPlainDataFrame(edgeTable)
-    } else {
-        edgeTable <- .asPlainDataFrame(edgeTable)
-    }
+    edgeTable <- .asPlainDataFrame(edgeTable)
 
     edgeColumns <- .standardEdgeColumns()
     numericColumns <- .numericEdgeColumns()
@@ -404,24 +477,27 @@
 
     for (columnName in edgeColumns) {
         if (!columnName %in% names(edgeTable)) {
-            if (columnName %in% numericColumns) {
-                edgeTable[[columnName]] <- NA_real_
-            } else if (columnName %in% logicalColumns) {
-                edgeTable[[columnName]] <- NA
-            } else {
-                edgeTable[[columnName]] <- NA_character_
-            }
+            edgeTable[[columnName]] <- .missingEdgeColumn(
+                columnName,
+                nrow(edgeTable)
+            )
         }
     }
 
     edgeTable <- edgeTable[, edgeColumns, drop = FALSE]
 
     for (columnName in numericColumns) {
-        edgeTable[[columnName]] <- as.numeric(edgeTable[[columnName]])
+        edgeTable[[columnName]] <- .coerceNumericColumn(
+            edgeTable[[columnName]],
+            columnName
+        )
     }
 
     for (columnName in logicalColumns) {
-        edgeTable[[columnName]] <- as.logical(edgeTable[[columnName]])
+        edgeTable[[columnName]] <- .coerceLogicalColumn(
+            edgeTable[[columnName]],
+            columnName
+        )
     }
 
     remainingColumns <- setdiff(edgeColumns, c(numericColumns, logicalColumns))
@@ -438,10 +514,17 @@
 
 .matchDelimiter <- function(filePath, delimiter = NULL) {
     if (!is.null(delimiter)) {
+        .assertScalarCharacter(delimiter, "delimiter")
         return(delimiter)
     }
 
-    extension <- tolower(tools::file_ext(filePath))
+    uncompressedPath <- sub(
+        "[.](gz|bz2|xz)$",
+        "",
+        filePath,
+        ignore.case = TRUE
+    )
+    extension <- tolower(tools::file_ext(uncompressedPath))
     if (identical(extension, "csv")) {
         return(",")
     }
@@ -461,6 +544,83 @@
     }
 }
 
+.validateUnitInterval <- function(x, argumentName, allowNull = FALSE) {
+    if (is.null(x) && isTRUE(allowNull)) {
+        return(NULL)
+    }
+    if (!is.numeric(x) || length(x) != 1L || !is.finite(x) ||
+        x < 0 || x > 1) {
+        stop(
+            "`", argumentName, "` must be ",
+            if (isTRUE(allowNull)) "NULL or " else "",
+            "a numeric value between 0 and 1.",
+            call. = FALSE
+        )
+    }
+
+    as.numeric(x)
+}
+
+.validatePAdjustMethod <- function(pAdjustMethod) {
+    .assertScalarCharacter(pAdjustMethod, "pAdjustMethod")
+    allowed <- c(stats::p.adjust.methods, "qvalue")
+    if (!pAdjustMethod %in% allowed) {
+        stop(
+            "`pAdjustMethod` must be one of: ",
+            paste(allowed, collapse = ", "),
+            ".",
+            call. = FALSE
+        )
+    }
+
+    pAdjustMethod
+}
+
+.assertWholeNumber <- function(x, argumentName, minimum = 0L) {
+    if (!is.numeric(x) || length(x) != 1L || !is.finite(x) ||
+        x < minimum || x != floor(x) || x > .Machine$integer.max) {
+        stop(
+            "`", argumentName, "` must be a finite integer of at least ",
+            minimum, ".",
+            call. = FALSE
+        )
+    }
+
+    as.integer(x)
+}
+
+# Fisher z is a large-sample approximation and its variance term is
+# 1/(n1 - 3) + 1/(n2 - 3), so it degrades badly just above the n = 4 floor.
+.warnOnSmallGroups <- function(groupLevels, group1Size, group2Size, threshold = 10L) {
+    if (group1Size >= threshold && group2Size >= threshold) {
+        return(invisible(NULL))
+    }
+
+    warning(
+        "Differential correlation group sizes are below ", threshold,
+        " for at least one group: ", groupLevels[[1L]], " = ", group1Size, ", ",
+        groupLevels[[2L]], " = ", group2Size,
+        ". The Fisher z difference is a large-sample approximation; below ",
+        threshold, " samples per group the z-scores and p-values are unstable ",
+        "and should be treated as descriptive.",
+        call. = FALSE
+    )
+    invisible(NULL)
+}
+
+.assertTwoGroupLevels <- function(groupLevels) {
+    groupLevels <- as.character(groupLevels)
+    if (length(groupLevels) != 2L || anyNA(groupLevels) ||
+        any(!nzchar(groupLevels)) || groupLevels[[1L]] == groupLevels[[2L]]) {
+        stop(
+            "`groupLevels` must contain two distinct, non-missing group labels.",
+            call. = FALSE
+        )
+    }
+
+    groupLevels
+}
+
 .assertMultiAssayExperiment <- function(analysisData) {
     if (!methods::is(analysisData, "MultiAssayExperiment")) {
         stop(
@@ -477,6 +637,12 @@
     if (is.null(store)) {
         store <- .corNettoStoreTemplate()
     } else {
+        if (!is.list(store)) {
+            stop(
+                "`metadata(analysisData)$cornetto` is reserved for a named list of CorNetto results.",
+                call. = FALSE
+            )
+        }
         template <- .corNettoStoreTemplate()
         missingSlots <- setdiff(names(template), names(store))
         if (length(missingSlots)) {
@@ -485,6 +651,21 @@
     }
     analysisMetadata <- S4Vectors::metadata(analysisData)
     analysisMetadata[["cornetto"]] <- store
+    S4Vectors::metadata(analysisData) <- analysisMetadata
+    analysisData
+}
+
+.invalidateStoredResults <- function(analysisData) {
+    store <- S4Vectors::metadata(analysisData)$cornetto
+    if (is.list(store) && any(lengths(store) > 0L)) {
+        warning(
+            "Filtering invalidated stored CorNetto results; the result store was cleared.",
+            call. = FALSE
+        )
+    }
+
+    analysisMetadata <- S4Vectors::metadata(analysisData)
+    analysisMetadata$cornetto <- .corNettoStoreTemplate()
     S4Vectors::metadata(analysisData) <- analysisMetadata
     analysisData
 }
@@ -508,42 +689,31 @@
     analysisData
 }
 
-.getCorNettoResults <- function(analysisData, slotName) {
-    analysisData <- .initializeCorNettoStore(analysisData)
-    store <- S4Vectors::metadata(analysisData)$cornetto
-    store[[slotName]]
-}
-
-.resolveResultType <- function(resultType) {
-    resultAliases <- c(
-        combinedNetworks = "integratedNetworks"
-    )
-    if (resultType %in% names(resultAliases)) {
-        return(unname(resultAliases[[resultType]]))
-    }
-    resultType
-}
-
 .makeResultName <- function(..., separator = "__") {
     pieces <- unlist(list(...), use.names = FALSE)
     pieces <- pieces[!is.na(pieces) & nzchar(pieces)]
     paste(pieces, collapse = separator)
 }
 
-.listToNamedVector <- function(x, expectedLength = NULL) {
-    if (is.null(x)) {
-        return(NULL)
+## assay(se) with no `i` silently returns the first matrix, which is the wrong
+## answer whenever a user hands us counts alongside normalized values.
+.selectAssayMatrix <- function(assayObject, assayName) {
+    availableAssays <- SummarizedExperiment::assayNames(assayObject)
+    if ("abundance" %in% availableAssays) {
+        return(SummarizedExperiment::assay(assayObject, "abundance"))
+    }
+    if (length(availableAssays) == 1L) {
+        return(SummarizedExperiment::assay(assayObject, availableAssays[[1L]]))
     }
 
-    if (is.list(x) && !methods::is(x, "DataFrame")) {
-        return(x)
-    }
-
-    if (!is.null(expectedLength)) {
-        rep(list(x), expectedLength)
-    } else {
-        list(x)
-    }
+    stop(
+        "Assay `", assayName, "` is a SummarizedExperiment holding ",
+        length(availableAssays), " matrices (",
+        paste(availableAssays, collapse = ", "),
+        "). CorNetto correlates one normalized matrix per assay: name it ",
+        "`abundance`, or subset the object before calling createAnalysisData().",
+        call. = FALSE
+    )
 }
 
 .extractAssayMatrix <- function(analysisData, assayName) {
@@ -560,7 +730,7 @@
 
     assayObject <- MultiAssayExperiment::experiments(analysisData)[[assayName]]
     if (methods::is(assayObject, "SummarizedExperiment")) {
-        assayMatrix <- SummarizedExperiment::assay(assayObject)
+        assayMatrix <- .selectAssayMatrix(assayObject, assayName)
     } else if (is.matrix(assayObject) || is.data.frame(assayObject)) {
         assayMatrix <- as.matrix(assayObject)
     } else {
@@ -606,11 +776,15 @@
         return(rownames(assayMatrix))
     }
 
-    featureSubset <- as.character(featureSubset)
-    featureSubset <- intersect(featureSubset, rownames(assayMatrix))
-    if (!length(featureSubset)) {
+    featureSubset <- unique(as.character(featureSubset))
+    if (anyNA(featureSubset) || any(!nzchar(featureSubset))) {
+        stop("`featureSubset` must be non-missing and non-empty.", call. = FALSE)
+    }
+    missingFeatures <- setdiff(featureSubset, rownames(assayMatrix))
+    if (length(missingFeatures)) {
         stop(
-            "No requested features were found in assay `", assayName, "`.",
+            "Requested features were not found in assay `", assayName, "`: ",
+            paste(utils::head(missingFeatures, 5L), collapse = ", "),
             call. = FALSE
         )
     }
@@ -630,12 +804,25 @@
     }
 
     if (!is.null(sampleIds)) {
-        sampleIds <- as.character(sampleIds)
-        sampleIds <- intersect(sampleIds, rownames(sampleData))
-        if (!length(sampleIds)) {
-            stop("None of the requested `sampleIds` were found in `analysisData`.", call. = FALSE)
+        if (!is.null(groupColumn) || !is.null(groupLevel)) {
+            stop(
+                "Supply either `sampleIds` or `groupColumn` and `groupLevel`, not both.",
+                call. = FALSE
+            )
         }
-        return(sampleIds)
+        sampleIds <- as.character(sampleIds)
+        if (anyNA(sampleIds) || any(!nzchar(sampleIds))) {
+            stop("`sampleIds` must be non-missing and non-empty.", call. = FALSE)
+        }
+        missingSampleIds <- setdiff(sampleIds, rownames(sampleData))
+        if (length(missingSampleIds)) {
+            stop(
+                "`sampleIds` were not found in `analysisData`: ",
+                paste(utils::head(missingSampleIds, 5L), collapse = ", "),
+                call. = FALSE
+            )
+        }
+        return(intersect(rownames(sampleData), sampleIds))
     }
 
     if (is.null(groupColumn) && is.null(groupLevel)) {
@@ -681,7 +868,9 @@
             next
         }
 
-        if (is.list(inputObject) && !methods::is(inputObject, "DataFrame")) {
+        if (is.list(inputObject) &&
+            !is.data.frame(inputObject) &&
+            !methods::is(inputObject, "DataFrame")) {
             flattened <- c(flattened, unname(inputObject))
         } else {
             flattened <- c(flattened, list(inputObject))
@@ -696,21 +885,16 @@
         stop("`sampleData` must not be NULL.", call. = FALSE)
     }
 
-    if (methods::is(sampleData, "DataFrame")) {
-        sampleData <- .asPlainDataFrame(sampleData)
-    } else {
-        sampleData <- .asPlainDataFrame(sampleData)
-    }
+    sampleData <- .asPlainDataFrame(sampleData)
 
-    if ("sampleId" %in% names(sampleData) && .hasAutomaticRowNames(sampleData)) {
+    if (.hasAutomaticRowNames(sampleData)) {
+        if (!"sampleId" %in% names(sampleData)) {
+            stop(
+                "`sampleData` must have explicit row names or a `sampleId` column.",
+                call. = FALSE
+            )
+        }
         rownames(sampleData) <- as.character(sampleData$sampleId)
-    }
-
-    if (is.null(rownames(sampleData))) {
-        stop(
-            "`sampleData` must have row names or a `sampleId` column.",
-            call. = FALSE
-        )
     }
 
     if (anyNA(rownames(sampleData)) || any(!nzchar(rownames(sampleData))) ||
@@ -719,10 +903,6 @@
     }
 
     S4Vectors::DataFrame(sampleData, check.names = FALSE)
-}
-
-.isObservedAssayPair <- function(edgeTable) {
-    edgeTable$fromAssayName == edgeTable$toAssayName
 }
 
 #' Get Stored CorNetto Results
@@ -761,6 +941,12 @@ getCorNettoResult <- function(
     resultName = NULL
 ) {
     .assertMultiAssayExperiment(analysisData)
+    if (!is.null(resultType)) {
+        .assertScalarCharacter(resultType, "resultType")
+    }
+    if (!is.null(resultName)) {
+        .assertScalarCharacter(resultName, "resultName")
+    }
     analysisData <- .initializeCorNettoStore(analysisData)
     store <- S4Vectors::metadata(analysisData)$cornetto
 
@@ -786,7 +972,6 @@ getCorNettoResult <- function(
         return(store[[matchingTypes[[1L]]]][[resultName]])
     }
 
-    resultType <- .resolveResultType(resultType)
     if (!resultType %in% names(store)) {
         stop("Unknown `resultType`: ", resultType, call. = FALSE)
     }

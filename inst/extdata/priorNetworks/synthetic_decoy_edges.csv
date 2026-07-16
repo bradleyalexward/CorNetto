@@ -1,0 +1,9 @@
+from,to,fromName,toName,edgeWeight,edgeDirection,edgeType,fromOmic,toOmic
+ENSG00000207631,SYN_RNA_01,ENSG00000207631,unmeasured RNA 1,0.5,undirected,syntheticDecoy,RNA,RNA
+SYN_RNA_01,ENSG00000207931,unmeasured RNA 1,ENSG00000207931,0.54,from_to,syntheticDecoy,RNA,RNA
+P02730,SYN_PROTEIN_01,P02730,unmeasured protein 1,0.58,undirected,syntheticDecoy,Protein,Protein
+SYN_PROTEIN_01,P06865,unmeasured protein 1,P06865,0.62,from_to,syntheticDecoy,Protein,Protein
+HMDB0001448,SYN_METABOLITE_01,HMDB0001448,unmeasured metabolite 1,0.66,undirected,syntheticDecoy,Metabolite,Metabolite
+SYN_METABOLITE_01,SYN_METABOLITE_02,unmeasured metabolite 1,unmeasured metabolite 2,0.7,from_to,syntheticDecoy,Metabolite,Metabolite
+SYN_CONTEXT_01,ENSG00000264566,unmeasured context 1,ENSG00000264566,0.74,undirected,syntheticDecoy,SyntheticContext,RNA
+SYN_CONTEXT_03,SYN_CONTEXT_04,unmeasured context 3,unmeasured context 4,0.78,from_to,syntheticDecoy,SyntheticContext,SyntheticContext

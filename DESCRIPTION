@@ -1,52 +1,66 @@
 Package: CorNetto
 Title: Knowledge-Guided Multi-Omic Correlation Network Analysis
-Version: 0.99.1
+Version: 0.99.4
 Authors@R: c(
-    person(
-        given = "Bradley",
-        family = "Ward",
-        role = c("aut", "cre"),
-        email = "bradleyalexward@gmail.com"
+    person("Bradley", "Ward", role = c("aut", "cre"),
+           email = "bradleyalexward@gmail.com"),
+    person("Laurent", "Gatto", role = "ths"),
+    person("Jean-Luc", "Balligand", role = "ctb"),
+    person("Laurence", "Bamps", role = "ctb"),
+    person("Patrice D.", "Cani", role = "ctb"),
+    person("Julien", "De Greef", role = "ctb"),
+    person("Joseph P.", "Dewulf", role = "ctb"),
+    person("Vincent", "Haufroid", role = "ctb"),
+    person("Benoît", "Kabamba", role = "ctb"),
+    person("Sébastien", "Pyr dit Ruys", role = "ctb"),
+    person("Didier", "Vertommen", role = "ctb"),
+    person("Jean Cyr", "Yombi", role = "ctb"),
+    person("Leïla", "Belkhir", role = "ths",
+           email = "leila.belkhir@saintluc.uclouvain.be"),
+    person("Laure", "Elens", role = "ths",
+           email = "laure.elens@uclouvain.be")
     )
-    )
-Description: CorNetto provides a workflow for building knowledge-guided
-    multi-omic correlation networks from normalized transcriptomic,
-    proteomic, and metabolomic abundance data. The package supports
-    group-specific correlation networks, prior-guided differential
-    correlation testing, rewiring scores, permutation validation,
-    pathway-focused subnetworks, and
-    graph export for downstream visualization. CorNetto is designed
-    around Bioconductor data
-    containers so that multi-omic assays and sample metadata can be
-    managed consistently throughout the analysis workflow.
+Description: Builds knowledge-guided multi-omic correlation networks from
+    normalized transcriptomic, proteomic, and metabolomic abundance data.
+    Group-specific correlation networks are compared with the Fisher
+    z-difference test, either across all pairs within an assay or across
+    candidate edges supplied by a prior-knowledge network, and the resulting
+    differential network is summarized into node-level rewiring scores that
+    identify features whose interaction patterns change between groups.
+    Rewiring scores can be compared with group-label permutation reference
+    distributions, and networks can be restricted to pathway-focused
+    neighbourhoods, converted to 'igraph' objects, or exported as
+    Cytoscape-ready node and edge tables. The package
+    is built on Bioconductor containers so that multi-omic assays and sample
+    metadata are managed consistently throughout the workflow.
 License: Artistic-2.0
 Encoding: UTF-8
 Depends:
     R (>= 4.4.0)
 Imports:
-    DGCA,
     graphics,
     igraph,
     methods,
     MultiAssayExperiment,
-    qvalue,
+    readr,
     S4Vectors,
     stats,
     SummarizedExperiment,
+    tools,
     utils,
-    readr,
     withr
 Suggests:
     BiocManager,
     BiocStyle,
     knitr,
+    qvalue,
     rmarkdown,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
-biocViews: GraphAndNetwork, Metabolomics, Network, Proteomics, SystemsBiology, Transcriptomics
-BiocType: Software
+biocViews: GraphAndNetwork, Metabolomics, Network, NetworkInference, Proteomics,
+    SystemsBiology, Transcriptomics
 URL: https://github.com/bradleyalexward/CorNetto
 BugReports: https://github.com/bradleyalexward/CorNetto/issues
 Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
+Config/roxygen2/version: 8.0.0

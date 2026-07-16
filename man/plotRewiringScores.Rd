@@ -6,7 +6,7 @@
 \usage{
 plotRewiringScores(
   rewiringTable,
-  scoreColumn = "degreeMatchedZScore",
+  scoreColumn = "rootMeanSquareRewiringScore",
   topN = 20L,
   label = NULL,
   main = "Top rewired nodes"
@@ -15,7 +15,10 @@ plotRewiringScores(
 \arguments{
 \item{rewiringTable}{Output of \code{calculateRewiringScores()}.}
 
-\item{scoreColumn}{Score column to plot.}
+\item{scoreColumn}{Score column to plot. See
+\code{\link[=calculateRewiringScores]{calculateRewiringScores()}} for what the three rewiring scores mean.
+The tail-probability columns from \code{\link[=permuteRewiringScores]{permuteRewiringScores()}} are also
+supported and are ordered from smallest to largest.}
 
 \item{topN}{Number of top nodes to display.}
 
@@ -31,12 +34,21 @@ Invisibly returns the plotted subset.
 \description{
 Plot Rewiring Scores
 }
+\details{
+The default is \code{rootMeanSquareRewiringScore} because it is
+comparable across nodes of different degree and is defined for every
+node. \code{degreeMatchedZScore} is only a within-bin ranking aid and is \code{NA}
+for sparsely populated degree bins, so it is a poor default for small
+networks. Rewiring scores are ordered decreasingly. Permutation tail
+probabilities are ordered increasingly because smaller values are more
+extreme.
+}
 \examples{
 rewiringTable <- S4Vectors::DataFrame(
     nodeKey = c("protein::P1", "protein::P2"),
     nodeIdentifier = c("P1", "P2"),
     nodeName = c("CFH", "C3"),
-    degreeMatchedZScore = c(2, 1),
+    rootMeanSquareRewiringScore = c(2, 1),
     check.names = FALSE
 )
 plotRewiringScores(rewiringTable, topN = 2)

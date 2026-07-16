@@ -6,15 +6,50 @@ authors:
   - family-names: Ward
     given-names: Bradley
     email: bradleyalexward@gmail.com
+    affiliation: "Integrated Pharmacometrics, Pharmacogenomics and Pharmacokinetics Group (PMGK), Louvain Drug Research Institute (LDRI), UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium; Louvain Center for Toxicology and Applied Pharmacology (LTAP), Institut de Recherche Expérimentale et Clinique (IREC), UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
   - family-names: Gatto
-    given-names: L.
+    given-names: Laurent
+    affiliation: "Computational Biology and Bioinformatics Unit (CBIO), de Duve Institute, UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
+  - family-names: Balligand
+    given-names: Jean-Luc
+    affiliation: "WELBIO (Walloon Excellence in Life Sciences and Biotechnology), Pole of Pharmacology and Therapeutics (FATH), Institut de Recherche Expérimentale et Clinique (IREC), Cliniques Universitaires Saint-Luc, UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
+  - family-names: Bamps
+    given-names: Laurence
+    affiliation: "Department of Internal Medicine, Cliniques Universitaires Saint-Luc, UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
+  - family-names: Cani
+    given-names: Patrice D.
+    affiliation: "WELBIO, Metabolism and Nutrition Research Group, Louvain Drug Research Institute (LDRI), UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
+  - family-names: De Greef
+    given-names: Julien
+    affiliation: "Louvain Center for Toxicology and Applied Pharmacology (LTAP), Institut de Recherche Expérimentale et Clinique (IREC), UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium; Department of Internal Medicine, Cliniques Universitaires Saint-Luc, UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
+  - family-names: Dewulf
+    given-names: Joseph P.
+    affiliation: "Louvain Center for Toxicology and Applied Pharmacology (LTAP), Institut de Recherche Expérimentale et Clinique (IREC), UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium; Department of Biochemistry, de Duve Institute, UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium; Department of Laboratory Medicine, Cliniques Universitaires Saint-Luc, UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
+  - family-names: Haufroid
+    given-names: Vincent
+    affiliation: "Louvain Center for Toxicology and Applied Pharmacology (LTAP), Institut de Recherche Expérimentale et Clinique (IREC), UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium; Department of Laboratory Medicine, Cliniques Universitaires Saint-Luc, UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
+  - family-names: Kabamba
+    given-names: Benoît
+    affiliation: "Department of Laboratory Medicine, Cliniques Universitaires Saint-Luc, UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium; Pôle de Microbiologie, Institut de Recherche Expérimentale et Clinique, UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
+  - family-names: Pyr dit Ruys
+    given-names: Sébastien
+    affiliation: "Integrated Pharmacometrics, Pharmacogenomics and Pharmacokinetics Group (PMGK), Louvain Drug Research Institute (LDRI), UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
+  - family-names: Vertommen
+    given-names: Didier
+    affiliation: "de Duve Institute and MASSPROT Platform, UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
+  - family-names: Yombi
+    given-names: Jean Cyr
+    affiliation: "Department of Internal Medicine, Cliniques Universitaires Saint-Luc, UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
   - family-names: Belkhir
-    given-names: L.
+    given-names: Leïla
+    email: leila.belkhir@saintluc.uclouvain.be
+    affiliation: "Louvain Center for Toxicology and Applied Pharmacology (LTAP), Institut de Recherche Expérimentale et Clinique (IREC), UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium; Department of Internal Medicine, Cliniques Universitaires Saint-Luc, UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
   - family-names: Elens
-    given-names: L.
-  - name: HYGIEIA Consortium
-version: 0.99.1
+    given-names: Laure
+    email: laure.elens@uclouvain.be
+    affiliation: "Integrated Pharmacometrics, Pharmacogenomics and Pharmacokinetics Group (PMGK), Louvain Drug Research Institute (LDRI), UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium; Louvain Center for Toxicology and Applied Pharmacology (LTAP), Institut de Recherche Expérimentale et Clinique (IREC), UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
+version: 0.99.4
 license: Artistic-2.0
 repository-code: "https://github.com/bradleyalexward/CorNetto"
 url: "https://github.com/bradleyalexward/CorNetto"
-abstract: "CorNetto is an R package for knowledge-guided multi-omic correlation network analysis, including sparse prior-restricted correlations, differential correlation testing, rewiring scores, and permutation validation."
+abstract: "CorNetto is an R package for knowledge-guided multi-omic correlation network analysis, including group-specific correlation networks, prior-guided differential correlation testing, node-level rewiring scores, and permutation validation. Leïla Belkhir and Laure Elens are joint senior authors."

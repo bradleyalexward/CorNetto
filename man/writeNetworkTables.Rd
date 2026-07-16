@@ -6,7 +6,7 @@
 \usage{
 writeNetworkTables(
   networkTables,
-  directoryPath = ".",
+  directoryPath,
   prefix = "cornettoNetwork",
   fileFormat = c("tsv", "csv")
 )
@@ -15,7 +15,8 @@ writeNetworkTables(
 \item{networkTables}{Output of \code{prepareCytoscapeTables()}, or a named
 list containing \code{nodes} and \code{edges}.}
 
-\item{directoryPath}{Output directory.}
+\item{directoryPath}{Output directory. Required, and created if it does
+not exist.}
 
 \item{prefix}{File-name prefix.}
 
@@ -26,6 +27,10 @@ Invisibly returns the written file paths.
 }
 \description{
 Write Cytoscape-Ready Network Tables
+}
+\details{
+\code{directoryPath} has no default so that the destination is always a
+deliberate choice rather than the current working directory.
 }
 \examples{
 knowledgeNetwork <- exampleKnowledgeNetwork()
