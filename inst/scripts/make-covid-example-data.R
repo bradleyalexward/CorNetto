@@ -11,6 +11,11 @@
 ## - proteinMatrix.csv
 ## - metaboliteMatrix.csv
 ##
+## The selected feature identifiers are fixed in
+## inst/extdata/covidData/featureSelection.csv. Selection does not depend on an
+## external interaction database. This keeps regeneration separate from the
+## synthetic candidate networks used by the vignette.
+##
 ## Optionally set CORNETTO_COVID_EXAMPLE_DIR to choose the output directory.
 ## By default, output is written to inst/extdata/covidData.
 
@@ -30,13 +35,14 @@ outputDir <- Sys.getenv(
     "CORNETTO_COVID_EXAMPLE_DIR",
     file.path(packageRoot, "inst", "extdata", "covidData")
 )
-priorDir <- Sys.getenv(
-    "CORNETTO_PRIOR_DIR",
-    file.path(packageRoot, "inst", "extdata", "priorNetworks")
-)
-
 samplesPerGroup <- as.integer(Sys.getenv("CORNETTO_COVID_SAMPLES_PER_GROUP", "12"))
-maxEdgesPerStratum <- as.integer(Sys.getenv("CORNETTO_COVID_MAX_EDGES_PER_STRATUM", "20"))
+featureSelectionPath <- file.path(
+    packageRoot,
+    "inst",
+    "extdata",
+    "covidData",
+    "featureSelection.csv"
+)
 
 requiredFiles <- file.path(
     sourceDir,
@@ -96,12 +102,6 @@ readSelectedMatrix <- function(filePath, sampleIds, featureIds) {
     matrixData[featureIds, sampleIds, drop = FALSE]
 }
 
-readPriorNetwork <- function(filePath) {
-    priorNetwork <- read.csv(filePath, stringsAsFactors = FALSE)
-    priorNetwork$sourceFile <- basename(filePath)
-    priorNetwork
-}
-
 patientInformation <- read.csv(
     file.path(sourceDir, "patientInformation.csv"),
     check.names = FALSE,
@@ -136,55 +136,63 @@ selectedSamples <- unlist(
 )
 
 assayFeatures <- lapply(matrixPaths, readFeatureIdentifiers)
-
-priorFiles <- list.files(priorDir, pattern = "[.]csv$", full.names = TRUE)
-priorNetwork <- do.call(rbind, lapply(priorFiles, readPriorNetwork))
-
-featureAvailable <- function(assayName, featureIdentifier) {
-    assayName %in% names(assayFeatures) &&
-        featureIdentifier %in% assayFeatures[[assayName]]
+featureSelection <- read.csv(
+    featureSelectionPath,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+)
+requiredSelectionColumns <- c("assayName", "featureIdentifier")
+if (!all(requiredSelectionColumns %in% names(featureSelection))) {
+    stop(
+        "The feature-selection manifest must contain `assayName` and ",
+        "`featureIdentifier`.",
+        call. = FALSE
+    )
+}
+if (anyDuplicated(featureSelection) ||
+    anyNA(featureSelection$assayName) ||
+    anyNA(featureSelection$featureIdentifier) ||
+    any(!nzchar(featureSelection$assayName)) ||
+    any(!nzchar(featureSelection$featureIdentifier))) {
+    stop("The feature-selection manifest contains invalid rows.", call. = FALSE)
+}
+unknownAssays <- setdiff(unique(featureSelection$assayName), names(assayFeatures))
+if (length(unknownAssays)) {
+    stop(
+        "Unknown assays in the feature-selection manifest: ",
+        paste(unknownAssays, collapse = ", "),
+        call. = FALSE
+    )
 }
 
-availablePrior <- priorNetwork[
-    mapply(featureAvailable, priorNetwork$fromOmic, priorNetwork$from) &
-        mapply(featureAvailable, priorNetwork$toOmic, priorNetwork$to),
-    ,
-    drop = FALSE
-]
-availablePrior$selectionStratum <- paste(
-    availablePrior$sourceFile,
-    availablePrior$fromOmic,
-    availablePrior$toOmic,
-    sep = "::"
-)
-
-selectedPrior <- do.call(
-    rbind,
-    lapply(
-        split(availablePrior, availablePrior$selectionStratum),
-        head,
-        n = maxEdgesPerStratum
-    )
-)
-
-selectedFeatures <- lapply(
-    names(assayFeatures),
-    function(assayName) {
-        unique(c(
-            selectedPrior$from[selectedPrior$fromOmic == assayName],
-            selectedPrior$to[selectedPrior$toOmic == assayName]
-        ))
+selectedFeatures <- lapply(names(assayFeatures), function(assayName) {
+    selected <- featureSelection$featureIdentifier[
+        featureSelection$assayName == assayName
+    ]
+    missingFeatures <- setdiff(selected, assayFeatures[[assayName]])
+    if (length(missingFeatures)) {
+        stop(
+            "Selected features are absent from the full ", assayName,
+            " matrix: ", paste(missingFeatures, collapse = ", "),
+            call. = FALSE
+        )
     }
-)
+    selected
+})
 names(selectedFeatures) <- names(assayFeatures)
 
 dir.create(outputDir, recursive = TRUE, showWarnings = FALSE)
 
+idMap <- setNames(
+    sprintf("COVID%03d", seq_along(selectedSamples)),
+    selectedSamples
+)
 patientSubset <- patientInformation[
     match(selectedSamples, patientInformation$Visit_ID),
-    ,
+    c("Visit_ID", "Group", "Visit"),
     drop = FALSE
 ]
+patientSubset$Visit_ID <- unname(idMap[patientSubset$Visit_ID])
 write.csv(
     patientSubset,
     file.path(outputDir, "patientInformation.csv"),
@@ -199,6 +207,10 @@ metaboliteMatrix <- readSelectedMatrix(
     selectedSamples,
     selectedFeatures$Metabolite
 )
+
+colnames(rnaMatrix) <- unname(idMap[colnames(rnaMatrix)])
+colnames(proteinMatrix) <- unname(idMap[colnames(proteinMatrix)])
+colnames(metaboliteMatrix) <- unname(idMap[colnames(metaboliteMatrix)])
 
 write.csv(rnaMatrix, file.path(outputDir, "rnaMatrix.csv"))
 write.csv(proteinMatrix, file.path(outputDir, "proteinMatrix.csv"))

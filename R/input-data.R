@@ -6,7 +6,7 @@
         rowDataFrame <- .asPlainDataFrame(
             SummarizedExperiment::rowData(assayObject)
         )
-        assayMatrix <- SummarizedExperiment::assay(assayObject)
+        assayMatrix <- .selectAssayMatrix(assayObject, assayName)
         assayMatrix <- .coerceNumericMatrixStrict(
             assayMatrix,
             context = paste0("assay `", assayName, "`")
@@ -108,6 +108,20 @@
 #'   are absent.
 #'
 #' @return A validated `MultiAssayExperiment`.
+#' @details CorNetto expects abundances that are already normalized; no
+#'   transformation is applied here. Each assay contributes exactly one
+#'   matrix. A `SummarizedExperiment` carrying several matrices must either
+#'   name the one to use `abundance` or be subset beforehand, otherwise
+#'   `createAnalysisData()` stops rather than guessing. Only the selected
+#'   matrix and the `featureIdentifier`/`featureName` columns of `rowData`
+#'   are retained; other `rowData` columns, assay-level `colData`, and
+#'   `rowRanges` are dropped.
+#'
+#'   Missing values are permitted and are never imputed. Correlations are
+#'   computed on pairwise complete observations, so each edge carries its own
+#'   effective sample size in the `sampleCount`, `group1SampleCount`, and
+#'   `group2SampleCount` columns. Non-finite values (`Inf`, `NaN`) are
+#'   rejected.
 #' @examples
 #' protein <- matrix(
 #'     seq_len(12),
@@ -125,11 +139,16 @@ createAnalysisData <- function(
     assayList,
     sampleData
 ) {
-    if (!is.list(assayList) || !length(assayList)) {
+    if (!is.list(assayList) || is.data.frame(assayList) || !length(assayList)) {
         stop("`assayList` must be a named list of assays.", call. = FALSE)
     }
-    if (is.null(names(assayList)) || any(!nzchar(names(assayList)))) {
-        stop("`assayList` must have non-empty assay names.", call. = FALSE)
+    assayNames <- names(assayList)
+    if (is.null(assayNames) || anyNA(assayNames) ||
+        any(!nzchar(assayNames)) || anyDuplicated(assayNames)) {
+        stop(
+            "`assayList` must have unique, non-missing, non-empty assay names.",
+            call. = FALSE
+        )
     }
 
     sampleData <- .coerceSampleData(sampleData)
@@ -237,15 +256,18 @@ validateAnalysisData <- function(analysisData, quiet = FALSE) {
             if (!"featureName" %in% names(rowDataFrame)) {
                 rowDataFrame$featureName <- rowDataFrame$featureIdentifier
             }
-
-            experimentList[[assayName]] <-
-                SummarizedExperiment::SummarizedExperiment(
-                    assays = list(abundance = assayMatrix),
-                    rowData = S4Vectors::DataFrame(
-                        rowDataFrame,
-                        check.names = FALSE
-                    )
+            featureIdentifiers <- as.character(rowDataFrame$featureIdentifier)
+            if (!identical(featureIdentifiers, rownames(assayMatrix))) {
+                stop(
+                    "Assay `", assayName,
+                    "` has a `featureIdentifier` column that does not match its row names.",
+                    call. = FALSE
                 )
+            }
+
+            SummarizedExperiment::rowData(assayObject) <-
+                S4Vectors::DataFrame(rowDataFrame, check.names = FALSE)
+            experimentList[[assayName]] <- assayObject
         }
     }
 
@@ -294,6 +316,20 @@ summarizeAnalysisData <- function(
 ) {
     .assertMultiAssayExperiment(analysisData)
     .assertScalarLogical(quiet, "quiet")
+    missingnessWarningThreshold <- .validateUnitInterval(
+        missingnessWarningThreshold,
+        "missingnessWarningThreshold"
+    )
+    lowSampleWarningThreshold <- .assertWholeNumber(
+        lowSampleWarningThreshold,
+        "lowSampleWarningThreshold",
+        minimum = 1L
+    )
+    highFeatureWarningThreshold <- .assertWholeNumber(
+        highFeatureWarningThreshold,
+        "highFeatureWarningThreshold",
+        minimum = 1L
+    )
 
     sampleData <- .asPlainDataFrame(MultiAssayExperiment::colData(analysisData))
     experimentList <- MultiAssayExperiment::experiments(analysisData)
@@ -564,6 +600,7 @@ filterSamples <- function(
     rownames(sampleData) <- selectedSampleIds
 
     MultiAssayExperiment::colData(analysisData) <- sampleData
+    analysisData <- .invalidateStoredResults(analysisData)
     validateAnalysisData(analysisData, quiet = TRUE)
 }
 
@@ -621,10 +658,11 @@ filterFeatures <- function(
             default = NULL
         )
         if (!is.null(assayFeatureSubset)) {
-            keepFeatures <- intersect(
-                keepFeatures,
-                as.character(assayFeatureSubset)
-            )
+            assayFeatureSubset <- unique(as.character(assayFeatureSubset))
+            if (anyNA(assayFeatureSubset) || any(!nzchar(assayFeatureSubset))) {
+                stop("`featureSubset` must be non-missing and non-empty.", call. = FALSE)
+            }
+            keepFeatures <- intersect(keepFeatures, assayFeatureSubset)
         }
 
         assayRemoveZeroVariance <- .resolveAssayFilterArgument(
@@ -651,16 +689,20 @@ filterFeatures <- function(
         if (!is.null(assayMinimumVariance)) {
             if (!is.numeric(assayMinimumVariance) ||
                 length(assayMinimumVariance) != 1L ||
-                is.na(assayMinimumVariance) || assayMinimumVariance < 0) {
+                !is.finite(assayMinimumVariance) || assayMinimumVariance < 0) {
                 stop(
                     "`minimumVariance` must be a non-negative numeric scalar.",
                     call. = FALSE
                 )
             }
             featureVariance <- apply(assayMatrix, 1L, stats::var, na.rm = TRUE)
+            # var() is NA for a feature with fewer than two observed values;
+            # those are dropped rather than compared against the threshold.
             keepFeatures <- intersect(
                 keepFeatures,
-                names(featureVariance)[featureVariance >= assayMinimumVariance]
+                names(featureVariance)[
+                    !is.na(featureVariance) & featureVariance >= assayMinimumVariance
+                ]
             )
         }
 
@@ -670,24 +712,25 @@ filterFeatures <- function(
             default = NULL
         )
         if (!is.null(assayTopVariableFeatures)) {
-            if (!is.numeric(assayTopVariableFeatures) || length(assayTopVariableFeatures) != 1L ||
-                is.na(assayTopVariableFeatures) || assayTopVariableFeatures < 1L ||
-                assayTopVariableFeatures != as.integer(assayTopVariableFeatures)) {
-                stop("`topVariableFeatures` must be a positive integer.", call. = FALSE)
-            }
+            assayTopVariableFeatures <- .assertWholeNumber(
+                assayTopVariableFeatures,
+                "topVariableFeatures",
+                minimum = 1L
+            )
             featureVariance <- apply(
                 assayMatrix[keepFeatures, , drop = FALSE],
                 1L,
                 stats::var,
                 na.rm = TRUE
             )
+            featureVariance <- featureVariance[!is.na(featureVariance)]
             featureVariance <- sort(featureVariance, decreasing = TRUE)
             keepFeatures <- names(utils::head(featureVariance, assayTopVariableFeatures))
         }
 
         keepFeatures <- intersect(rownames(assayMatrix), keepFeatures)
         if (!length(keepFeatures)) {
-                        warning(
+            warning(
                 "Filtering removed all features from assay `", assayName,
                 "`; dropping this assay from the filtered result.",
                 call. = FALSE
@@ -699,10 +742,11 @@ filterFeatures <- function(
         experimentList[[assayName]] <- assayObject[keepFeatures, , drop = FALSE]
     }
 
-        if (!length(experimentList)) {
+    if (!length(experimentList)) {
         stop("Filtering removed all assays from `analysisData`.", call. = FALSE)
     }
-    
+
     MultiAssayExperiment::experiments(analysisData) <- experimentList
+    analysisData <- .invalidateStoredResults(analysisData)
     validateAnalysisData(analysisData, quiet = TRUE)
 }

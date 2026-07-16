@@ -40,7 +40,9 @@ labels.}
 \item{assayName}{Assay name used when testing all within-omic pairs.}
 
 \item{candidateEdgeTable}{Optional candidate edges to test. May be a
-standardized CorNetto edge table or a validated knowledge network.}
+standardized CorNetto edge table or a validated knowledge network.
+Candidate self-loops are omitted with a warning because a feature's
+correlation with itself is not an informative differential edge.}
 
 \item{featureSubset}{Optional feature subset used when \code{assayName} is
 supplied.}
@@ -49,15 +51,17 @@ supplied.}
 currently supports \code{"pearson"} and \code{"spearman"}.}
 
 \item{minimumAbsoluteCorrelation}{Minimum absolute correlation that
-must be present in at least one group before multiple-testing
-correction and edge retention.}
+must be present in at least one group for edge retention. P-values are
+adjusted over the full testable family before this filter is applied.}
 
 \item{adjustedPValueThreshold}{Maximum within-group adjusted p-value
 that must be reached in the same group as the correlation threshold
 before an edge is kept. Set \code{NULL} to skip within-group significance
 filtering after the correlation prefilter.}
 
-\item{pAdjustMethod}{Multiple-testing correction method.}
+\item{pAdjustMethod}{Multiple-testing correction method. Use one of
+\code{stats::p.adjust.methods} or \code{"qvalue"}; the latter requires the suggested
+\code{qvalue} package.}
 
 \item{featureNameColumn}{Row-data column containing display names.}
 
@@ -66,10 +70,12 @@ differential-correlation p-value retained in the network. The
 default \code{NULL} keeps all rewiring-scoring edges returned by
 \code{testDifferentialCorrelation()}.}
 
-\item{edgeWeightMethod}{Method used to generate the edge weight.}
+\item{edgeWeightMethod}{Method used to generate the edge weight.
+\code{"signedZScore"} keeps the sign of \code{zScoreDifference}; \code{"absoluteZScore"}
+takes its magnitude. See Details for what the sign means.}
 
-\item{scoreColumn}{Rewiring-score column used to compute empirical
-node-level p-values.}
+\item{scoreColumn}{Rewiring-score column used to compute permutation tail
+probabilities.}
 
 \item{nPermutations}{Number of group-label permutations.}
 
@@ -88,14 +94,57 @@ score table.}
 \value{
 A named list containing the observed differential-correlation
 table, observed differential network, rewiring validation table, and
-optionally the permutation score table. When \code{storeResult = TRUE},
+optionally the permutation score table. The rewiring table includes
+\code{permutationTailProbability}, \code{adjustedPermutationTailProbability}, and
+\code{inferenceStatus}; the same status is also a scalar element of the result
+list so it remains available when the table has no rows. When
+\code{storeResult = TRUE},
 the list is stored in \code{metadata(analysisData)$cornetto$validationResults}
 and the updated \code{MultiAssayExperiment} is returned.
 }
 \description{
 Permute group labels, rerun differential correlation testing, rebuild
-the differential network, and calculate empirical node-level rewiring
-p-values.
+the differential network, and compare observed node scores with their
+permutation distributions.
+}
+\details{
+Group labels are permuted and the differential-correlation
+statistics are recomputed over a fixed edge universe. An
+edge can still be unscored in a permutation when a group has fewer than
+four pairwise-complete observations or a feature is constant, so realized
+node degree can fall in some permutations.
+Tail probabilities use the Phipson and Smyth (2010) estimator,
+\code{(1 + r) / (1 + B_i)}, where \code{B_i} is the number of permutations that
+produced a score for the node. \code{contributingPermutations} reports \code{B_i}.
+Nodes with few
+contributing permutations have a thin null and should be read as
+descriptive.
+
+\code{inferenceStatus} is \code{"randomization p-value"} only when a supplied
+candidate universe is fixed before the observed analysis, no
+correlation or p-value filter is active, and missingness and ties cannot
+make a candidate edge unscorable under any permitted allocation. The code
+also checks that every edge was scored in the observed data and every
+sampled permutation. The selected node score must be finite in the
+observed data and all requested permutations. The user must still ensure
+that the candidate universe was prespecified and that labels are
+exchangeable globally, or within each level of \code{blockColumn}.
+
+In all other settings, including all-pairs mode and the function's default
+filtering settings, \code{inferenceStatus} is \code{"conditional ranking"}. The two
+tail-probability columns then rank nodes against a label-dependent or
+incomplete reference distribution; they do not carry p-value or false
+discovery rate guarantees. Applying \code{pAdjustMethod} remains useful as a
+monotone ranking adjustment, but does not restore those guarantees.
+
+Permutations are sampled independently and assignments can repeat. With
+\code{B = nPermutations} Monte Carlo draws, the smallest tail probability for a
+fully scored node is \code{1 / (B + 1)}. Exact enumeration of distinct assignments is not
+implemented. With 1,000 draws the minimum is about 0.001, which is often
+too coarse after adjustment across many nodes.
+
+\code{seed} is applied with \code{\link[withr:local_seed]{withr::local_seed()}}, which restores the calling
+RNG state on exit, so calling this function does not advance your stream.
 }
 \examples{
 analysisData <- exampleAnalysisData()
@@ -111,4 +160,10 @@ validation <- permuteRewiringScores(
     seed = 1
 )
 names(validation)
+}
+\references{
+Phipson B, Smyth GK (2010). Permutation p-values should never be zero:
+calculating exact p-values when permutations are randomly drawn.
+\emph{Statistical Applications in Genetics and Molecular Biology}, 9, 39.
+\doi{10.2202/1544-6115.1585}
 }

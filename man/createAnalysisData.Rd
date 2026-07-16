@@ -21,6 +21,22 @@ A validated \code{MultiAssayExperiment}.
 Create a \code{MultiAssayExperiment} from normalized assay objects and
 sample metadata.
 }
+\details{
+CorNetto expects abundances that are already normalized; no
+transformation is applied here. Each assay contributes exactly one
+matrix. A \code{SummarizedExperiment} carrying several matrices must either
+name the one to use \code{abundance} or be subset beforehand, otherwise
+\code{createAnalysisData()} stops rather than guessing. Only the selected
+matrix and the \code{featureIdentifier}/\code{featureName} columns of \code{rowData}
+are retained; other \code{rowData} columns, assay-level \code{colData}, and
+\code{rowRanges} are dropped.
+
+Missing values are permitted and are never imputed. Correlations are
+computed on pairwise complete observations, so each edge carries its own
+effective sample size in the \code{sampleCount}, \code{group1SampleCount}, and
+\code{group2SampleCount} columns. Non-finite values (\code{Inf}, \code{NaN}) are
+rejected.
+}
 \examples{
 protein <- matrix(
     seq_len(12),

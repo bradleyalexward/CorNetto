@@ -33,16 +33,36 @@
     if (!"evidenceScore" %in% names(knowledgeNetwork)) {
         knowledgeNetwork$evidenceScore <- NA_real_
     }
+    knowledgeNetwork$evidenceScore <- .coerceNumericColumn(
+        knowledgeNetwork$evidenceScore,
+        "evidenceScore"
+    )
     if (!"fromFeatureName" %in% names(knowledgeNetwork)) {
         knowledgeNetwork$fromFeatureName <- knowledgeNetwork$fromFeatureIdentifier
     }
     if (!"toFeatureName" %in% names(knowledgeNetwork)) {
         knowledgeNetwork$toFeatureName <- knowledgeNetwork$toFeatureIdentifier
     }
+
+    # A blank cell in a column that exists must fall back to the same default as
+    # a missing column, otherwise isDirected() below reads it as "not undirected"
+    # and silently makes the edge directed.
+    knowledgeNetwork$edgeType <- .fillBlank(knowledgeNetwork$edgeType, edgeType)
+    knowledgeNetwork$edgeDirection <- .fillBlank(knowledgeNetwork$edgeDirection, edgeDirection)
+    knowledgeNetwork$knowledgeSource <- .fillBlank(knowledgeNetwork$knowledgeSource, knowledgeSource)
+
     if (!"isDirected" %in% names(knowledgeNetwork)) {
         knowledgeNetwork$isDirected <-
             !(tolower(knowledgeNetwork$edgeDirection) %in% c("undirected", "association")) &
             !(tolower(knowledgeNetwork$edgeType) %in% c("proteinproteininteraction", "correlation"))
+    } else {
+        # An explicit column wins, but a blank entry falls back to inference.
+        suppliedDirection <- as.logical(knowledgeNetwork$isDirected)
+        inferredDirection <-
+            !(tolower(knowledgeNetwork$edgeDirection) %in% c("undirected", "association")) &
+            !(tolower(knowledgeNetwork$edgeType) %in% c("proteinproteininteraction", "correlation"))
+        suppliedDirection[is.na(suppliedDirection)] <- inferredDirection[is.na(suppliedDirection)]
+        knowledgeNetwork$isDirected <- suppliedDirection
     }
 
     knowledgeNetwork$sourceType <- "knowledge"
@@ -63,7 +83,7 @@
     knowledgeNetwork$edgeWeight <- ifelse(
         is.na(knowledgeNetwork$evidenceScore),
         1,
-        as.numeric(knowledgeNetwork$evidenceScore)
+        knowledgeNetwork$evidenceScore
     )
 
     .coerceStandardEdgeTable(knowledgeNetwork)
@@ -105,6 +125,10 @@ validateKnowledgeNetwork <- function(
     quiet = FALSE
 ) {
     .assertScalarLogical(quiet, "quiet")
+    .assertScalarLogical(storeResult, "storeResult")
+    .assertScalarCharacter(edgeType, "edgeType")
+    .assertScalarCharacter(edgeDirection, "edgeDirection")
+    .assertScalarCharacter(knowledgeSource, "knowledgeSource")
     standardizedNetwork <- .standardizeKnowledgeNetwork(
         knowledgeNetwork = knowledgeNetwork,
         edgeType = edgeType,
@@ -113,16 +137,20 @@ validateKnowledgeNetwork <- function(
     )
 
     if (anyNA(standardizedNetwork$fromFeatureIdentifier) ||
-        anyNA(standardizedNetwork$toFeatureIdentifier)) {
+        anyNA(standardizedNetwork$toFeatureIdentifier) ||
+        any(!nzchar(trimws(standardizedNetwork$fromFeatureIdentifier))) ||
+        any(!nzchar(trimws(standardizedNetwork$toFeatureIdentifier)))) {
         stop(
-            "Knowledge networks cannot contain missing feature identifiers.",
+            "Knowledge networks cannot contain missing or blank feature identifiers.",
             call. = FALSE
         )
     }
     if (anyNA(standardizedNetwork$fromAssayName) ||
-        anyNA(standardizedNetwork$toAssayName)) {
+        anyNA(standardizedNetwork$toAssayName) ||
+        any(!nzchar(trimws(standardizedNetwork$fromAssayName))) ||
+        any(!nzchar(trimws(standardizedNetwork$toAssayName)))) {
         stop(
-            "Knowledge networks cannot contain missing assay names.",
+            "Knowledge networks cannot contain missing or blank assay names.",
             call. = FALSE
         )
     }
@@ -422,6 +450,8 @@ combineKnowledgeNetworks <- function(
     resultName = "combinedKnowledgeNetwork",
     storeResult = FALSE
 ) {
+    .assertScalarLogical(removeDuplicates, "removeDuplicates")
+    .assertScalarLogical(storeResult, "storeResult")
     networkList <- .flattenEdgeTables(...)
     if (!length(networkList)) {
         stop("At least one knowledge network must be supplied.", call. = FALSE)

@@ -33,7 +33,9 @@ labels.}
 \item{assayName}{Assay name used when testing all within-omic pairs.}
 
 \item{candidateEdgeTable}{Optional candidate edges to test. May be a
-standardized CorNetto edge table or a validated knowledge network.}
+standardized CorNetto edge table or a validated knowledge network.
+Candidate self-loops are omitted with a warning because a feature's
+correlation with itself is not an informative differential edge.}
 
 \item{featureSubset}{Optional feature subset used when \code{assayName} is
 supplied.}
@@ -42,15 +44,17 @@ supplied.}
 currently supports \code{"pearson"} and \code{"spearman"}.}
 
 \item{minimumAbsoluteCorrelation}{Minimum absolute correlation that
-must be present in at least one group before multiple-testing
-correction and edge retention.}
+must be present in at least one group for edge retention. P-values are
+adjusted over the full testable family before this filter is applied.}
 
 \item{adjustedPValueThreshold}{Maximum within-group adjusted p-value
 that must be reached in the same group as the correlation threshold
 before an edge is kept. Set \code{NULL} to skip within-group significance
 filtering after the correlation prefilter.}
 
-\item{pAdjustMethod}{Multiple-testing correction method.}
+\item{pAdjustMethod}{Multiple-testing correction method. Use one of
+\code{stats::p.adjust.methods} or \code{"qvalue"}; the latter requires the suggested
+\code{qvalue} package.}
 
 \item{featureNameColumn}{Row-data column containing display names.}
 
@@ -65,18 +69,69 @@ A standardized edge \code{DataFrame} or an updated
 \description{
 Compute differential correlation statistics for either all within-omic
 feature pairs in one assay or a supplied set of candidate edges.
-Within-omic all-pairs testing uses DGCA, while candidate-edge testing
-evaluates only the supplied edges.
+All-pairs testing evaluates every within-omic pair, while candidate-edge
+testing evaluates only the supplied edges.
 }
 \details{
-Edges are first filtered to pairs with sufficient absolute
-correlation in at least one group. Within-group and differential
-p-values are then adjusted on this retained edge universe. When
+Within-group and differential p-values are adjusted over all
+testable pairs before any correlation-strength filter is applied. Edges
+are then filtered to pairs with sufficient absolute correlation in at
+least one group. When
 \code{adjustedPValueThreshold} is not \code{NULL}, an edge is retained only if
 the same group is both sufficiently correlated and significant after
-multiple-testing correction. This rewiring-first behavior creates a
-stable scoring network without requiring every edge to pass a
-differential-correlation p-value threshold.
+multiple-testing correction. Differential-correlation adjusted p-values
+are reported but are not used for retention unless requested later by
+\code{\link[=createDifferentialCorrelationNetwork]{createDifferentialCorrelationNetwork()}}.
+
+Candidate edges are treated as undirected hypotheses. Self-loops are
+removed with a warning, and duplicate or mirrored rows are tested once,
+using the first occurrence.
+
+The statistic is the Fisher z difference between two independent
+correlations, evaluated against a standard normal:
+
+\deqn{z = (atanh(r2) - atanh(r1)) / sqrt(1/(n1 - 3) + 1/(n2 - 3))}
+
+For \code{correlationMethod = "spearman"} the variance term is inflated by 1.06
+following Fieller, Hartley and Pearson (1957).
+
+Sample correlations of exactly -1 or 1 make the Fisher transform
+infinite. CorNetto bounds them to \code{-1 + 1e-6} or \code{1 - 1e-6} before the
+transform. This keeps the statistic finite but makes results for perfectly
+collinear pairs sensitive to that numerical convention.
+
+Mind the direction. The subtraction is group 2 minus group 1, so a
+\strong{positive} \code{zScoreDifference} means the pair is more strongly correlated
+in \code{groupLevels[2]}. This is the opposite orientation to the
+\code{edgeDirection} labels from \code{\link[=createDifferentialCorrelationNetwork]{createDifferentialCorrelationNetwork()}},
+which are named from group 1's point of view (\code{gainInGroup1} marks a pair
+correlated in group 1 and not in group 2, and therefore carries a negative
+z). The magnitude, the p-value, and every rewiring score are unaffected by
+the convention, since they square or take the absolute value of \code{z}; only
+\code{edgeWeight} under \code{edgeWeightMethod = "signedZScore"} exposes the sign.
+
+This carries assumptions that omic data routinely violate, and the
+package does not test them for you:
+\itemize{
+\item Pearson z tests assume each pair is approximately bivariate normal.
+Log-abundance proteomics and metabolomics are often heavy-tailed or
+left-censored, where the approximation is anticonservative. Use
+\code{correlationMethod = "spearman"} for heavy-tailed, monotone
+non-linear, or rank-robust analyses; Pearson remains the default
+because it is conventional for normalized log-scale omics.
+\item The two groups must be independent. Repeated measurements on the same
+subject in both groups break this.
+\item The variance term divides by \code{n - 3}, so four samples per group is the
+arithmetic floor and the function stops below it. That floor is not a
+recommendation: at four per group the standard error of the z
+difference is \code{sqrt(2)}. A warning is emitted below ten samples per
+group, and results there should be read as descriptive.
+}
+
+Correlations use pairwise complete observations, so each edge carries its
+own effective sample size in \code{group1SampleCount} and \code{group2SampleCount}.
+Pairs where a feature is constant within a group yield no correlation and
+are dropped.
 }
 \examples{
 analysisData <- exampleAnalysisData()
@@ -91,4 +146,16 @@ differentialTable <- testDifferentialCorrelation(
     storeResult = FALSE
 )
 differentialTable
+}
+\references{
+Fisher RA (1921). On the "probable error" of a coefficient of correlation
+deduced from a small sample. \emph{Metron}, 1, 3-32.
+
+Fieller EC, Hartley HO, Pearson ES (1957). Tests for rank correlation
+coefficients I. \emph{Biometrika}, 44, 470-481.
+\doi{10.1093/biomet/44.3-4.470}
+
+Benjamini Y, Hochberg Y (1995). Controlling the false discovery rate.
+\emph{Journal of the Royal Statistical Society B}, 57, 289-300.
+\doi{10.1111/j.2517-6161.1995.tb02031.x}
 }

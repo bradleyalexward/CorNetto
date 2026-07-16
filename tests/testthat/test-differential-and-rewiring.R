@@ -111,7 +111,38 @@ test_that("candidate-edge differential correlation ignores unmeasured assays", {
     expect_true(all(differentialResults$toAssayName %in% measuredAssays))
 })
 
-test_that("rewiring-first filtering couples strength and significance within group", {
+test_that("candidate-edge differential correlation drops self-loops", {
+    analysisData <- exampleAnalysisData()
+    candidateEdges <- S4Vectors::DataFrame(
+        fromFeatureIdentifier = c("P1", "P1"),
+        toFeatureIdentifier = c("P1", "P2"),
+        fromAssayName = c("protein", "protein"),
+        toAssayName = c("protein", "protein"),
+        check.names = FALSE
+    )
+
+    expect_warning(
+        differentialResults <- testDifferentialCorrelation(
+            analysisData = analysisData,
+            groupColumn = "clinicalGroup",
+            groupLevels = c("PASC", "Recovered"),
+            candidateEdgeTable = candidateEdges,
+            minimumAbsoluteCorrelation = 0,
+            adjustedPValueThreshold = 1,
+            storeResult = FALSE
+        ),
+        "Dropping 1 self-loop candidate edge"
+    )
+
+    expect_equal(nrow(differentialResults), 1)
+    expect_false(any(
+        differentialResults$fromFeatureIdentifier ==
+            differentialResults$toFeatureIdentifier &
+            differentialResults$fromAssayName == differentialResults$toAssayName
+    ))
+})
+
+test_that("p-values are adjusted before correlation-strength filtering", {
     finalizeResults <- getFromNamespace(".finalizeDifferentialCorrelationResults", "CorNetto")
 
     rawResults <- S4Vectors::DataFrame(
@@ -139,22 +170,22 @@ test_that("rewiring-first filtering couples strength and significance within gro
         correlationMethod = "pearson"
     )
     filteredData <- as.data.frame(filteredResults)
-    prefilteredData <- as.data.frame(rawResults)[1:3, , drop = FALSE]
+    rawData <- as.data.frame(rawResults)
 
     expect_equal(filteredData$fromFeatureIdentifier, c("A", "C"))
     expect_false("B" %in% filteredData$fromFeatureIdentifier)
     expect_false("D" %in% filteredData$fromFeatureIdentifier)
     expect_equal(
         filteredData$adjustedPValue,
-        stats::p.adjust(prefilteredData$pValue, method = "fdr")[c(1, 3)]
+        stats::p.adjust(rawData$pValue, method = "fdr")[c(1, 3)]
     )
     expect_equal(
         filteredData$group1AdjustedPValue[[1]],
-        stats::p.adjust(prefilteredData$group1PValue, method = "fdr")[[1]]
+        stats::p.adjust(rawData$group1PValue, method = "fdr")[[1]]
     )
     expect_equal(
         filteredData$group2AdjustedPValue[[2]],
-        stats::p.adjust(prefilteredData$group2PValue, method = "fdr")[[3]]
+        stats::p.adjust(rawData$group2PValue, method = "fdr")[[3]]
     )
 })
 
@@ -203,39 +234,171 @@ test_that("weighted networks default to rewiring-first signed z-score weights", 
     )
 })
 
-test_that("rewiring permutation validation returns empirical node p-values", {
+test_that("all-pairs permutation validation returns conditional rankings", {
     analysisData <- exampleAnalysisData()
 
-    validationResult <- suppressWarnings(permuteRewiringScores(
-        analysisData = analysisData,
-        groupColumn = "clinicalGroup",
-        groupLevels = c("PASC", "Recovered"),
-        assayName = "protein",
-        minimumAbsoluteCorrelation = 0,
-        adjustedPValueThreshold = 1,
-        differenceAdjustedPValueThreshold = 1,
-        pAdjustMethod = "fdr",
-        nPermutations = 2,
-        seed = 1,
-        keepPermutationScores = TRUE
-    ))
+    expect_warning(
+        validationResult <- permuteRewiringScores(
+            analysisData = analysisData,
+            groupColumn = "clinicalGroup",
+            groupLevels = c("PASC", "Recovered"),
+            assayName = "protein",
+            minimumAbsoluteCorrelation = 0,
+            adjustedPValueThreshold = 1,
+            differenceAdjustedPValueThreshold = 1,
+            pAdjustMethod = "fdr",
+            nPermutations = 2,
+            seed = 1,
+            keepPermutationScores = TRUE
+        ),
+        "prespecified `candidateEdgeTable`"
+    )
 
     expect_true(all(c(
         "differentialCorrelationTable",
         "differentialCorrelationNetwork",
         "rewiringTable",
+        "inferenceStatus",
         "permutationScores"
     ) %in% names(validationResult)))
     expect_true(all(c(
-        "empiricalPValue",
-        "empiricalAdjustedPValue",
+        "permutationTailProbability",
+        "adjustedPermutationTailProbability",
         "nullMeanScore",
         "scoreColumn",
-        "nPermutations"
+        "nPermutations",
+        "inferenceStatus"
     ) %in% names(validationResult$rewiringTable)))
+    expect_identical(validationResult$inferenceStatus, "conditional ranking")
+    expect_true(all(validationResult$rewiringTable$inferenceStatus == "conditional ranking"))
+    expect_false(any(c("empiricalPValue", "empiricalAdjustedPValue") %in%
+        names(validationResult$rewiringTable)))
     expect_true(all(validationResult$rewiringTable$nPermutations == 2))
     expect_true(methods::is(validationResult$permutationScores, "DataFrame"))
     expect_false("degreeMatchedScaledScore" %in% names(validationResult$permutationScores))
+})
+
+test_that("a complete fixed candidate universe supports randomization inference", {
+    analysisData <- exampleAnalysisData()
+    candidateEdge <- S4Vectors::DataFrame(
+        fromFeatureIdentifier = "P1",
+        toFeatureIdentifier = "P2",
+        fromAssayName = "protein",
+        toAssayName = "protein",
+        check.names = FALSE
+    )
+
+    validationResult <- suppressWarnings(permuteRewiringScores(
+        analysisData = analysisData,
+        groupColumn = "clinicalGroup",
+        groupLevels = c("PASC", "Recovered"),
+        candidateEdgeTable = candidateEdge,
+        minimumAbsoluteCorrelation = 0,
+        adjustedPValueThreshold = NULL,
+        differenceAdjustedPValueThreshold = NULL,
+        pAdjustMethod = "fdr",
+        nPermutations = 3,
+        seed = 1
+    ))
+
+    rewiringTable <- as.data.frame(validationResult$rewiringTable)
+    expect_identical(validationResult$inferenceStatus, "randomization p-value")
+    expect_true(all(rewiringTable$inferenceStatus == "randomization p-value"))
+    expect_true(all(rewiringTable$permutationTailProbability >= 1 / 4))
+    expect_true(all(rewiringTable$permutationTailProbability <= 1))
+    expect_equal(
+        rewiringTable$adjustedPermutationTailProbability,
+        stats::p.adjust(rewiringTable$permutationTailProbability, method = "fdr")
+    )
+
+    storedData <- suppressWarnings(permuteRewiringScores(
+        analysisData = analysisData,
+        groupColumn = "clinicalGroup",
+        groupLevels = c("PASC", "Recovered"),
+        candidateEdgeTable = candidateEdge,
+        minimumAbsoluteCorrelation = 0,
+        adjustedPValueThreshold = NULL,
+        nPermutations = 1,
+        seed = 1,
+        resultName = "fixedCandidate",
+        storeResult = TRUE
+    ))
+    storedResult <- validationResults(storedData)[["fixedCandidate"]]
+    expect_identical(storedResult$inferenceStatus, "randomization p-value")
+})
+
+test_that("unestimable permutation scores are not labelled as p-values", {
+    validationResult <- suppressWarnings(permuteRewiringScores(
+        analysisData = exampleAnalysisData(),
+        groupColumn = "clinicalGroup",
+        groupLevels = c("PASC", "Recovered"),
+        candidateEdgeTable = exampleKnowledgeNetwork(),
+        correlationMethod = "pearson",
+        minimumAbsoluteCorrelation = 0,
+        adjustedPValueThreshold = NULL,
+        differenceAdjustedPValueThreshold = NULL,
+        scoreColumn = "degreeMatchedZScore",
+        nPermutations = 2,
+        seed = 1
+    ))
+
+    rewiringTable <- as.data.frame(validationResult$rewiringTable)
+    incomplete <- is.na(rewiringTable$degreeMatchedZScore) |
+        rewiringTable$contributingPermutations < rewiringTable$nPermutations
+    expect_true(any(incomplete))
+    expect_true(all(
+        rewiringTable$inferenceStatus[incomplete] == "conditional ranking"
+    ))
+    expect_identical(validationResult$inferenceStatus, "conditional ranking")
+})
+
+test_that("candidate selection and empty universes have explicit status", {
+    analysisData <- exampleAnalysisData()
+    candidateEdge <- S4Vectors::DataFrame(
+        fromFeatureIdentifier = "P1",
+        toFeatureIdentifier = "P2",
+        fromAssayName = "protein",
+        toAssayName = "protein",
+        check.names = FALSE
+    )
+
+    expect_warning(
+        selectedResult <- permuteRewiringScores(
+            analysisData = analysisData,
+            groupColumn = "clinicalGroup",
+            groupLevels = c("PASC", "Recovered"),
+            candidateEdgeTable = candidateEdge,
+            minimumAbsoluteCorrelation = 0.3,
+            adjustedPValueThreshold = NULL,
+            nPermutations = 1,
+            seed = 1
+        ),
+        "conditional rankings"
+    )
+    expect_identical(selectedResult$inferenceStatus, "conditional ranking")
+
+    selfLoop <- candidateEdge
+    selfLoop$toFeatureIdentifier <- selfLoop$fromFeatureIdentifier
+    expect_warning(
+        emptyResult <- permuteRewiringScores(
+            analysisData = analysisData,
+            groupColumn = "clinicalGroup",
+            groupLevels = c("PASC", "Recovered"),
+            candidateEdgeTable = selfLoop,
+            minimumAbsoluteCorrelation = 0,
+            adjustedPValueThreshold = NULL,
+            nPermutations = 1,
+            seed = 1
+        ),
+        "Dropping 1 self-loop"
+    )
+    expect_identical(emptyResult$inferenceStatus, "conditional ranking")
+    expect_equal(nrow(emptyResult$rewiringTable), 0)
+    expect_true(all(c(
+        "permutationTailProbability",
+        "adjustedPermutationTailProbability",
+        "inferenceStatus"
+    ) %in% names(emptyResult$rewiringTable)))
 })
 
 test_that("weighted differential networks can be stored separately from raw results", {

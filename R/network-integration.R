@@ -1,5 +1,27 @@
 .nodeKey <- function(assayName, featureIdentifier) {
+    assayName <- as.character(assayName)
+    featureIdentifier <- as.character(featureIdentifier)
+    hasSeparator <- (!is.na(assayName) & grepl("::", assayName, fixed = TRUE)) |
+        (!is.na(featureIdentifier) &
+            grepl("::", featureIdentifier, fixed = TRUE))
+    if (any(hasSeparator)) {
+        stop(
+            "Assay names and feature identifiers cannot contain `::`.",
+            call. = FALSE
+        )
+    }
     paste(assayName, featureIdentifier, sep = "::")
+}
+
+## igraph cannot hold directed and undirected edges in one object: if any edge
+## is directed the whole graph is. Mirroring the undirected edges first is what
+## keeps them symmetric under mode = "in"/"out" traversal.
+.graphIsDirected <- function(edgeData) {
+    if (!nrow(edgeData)) {
+        return(FALSE)
+    }
+
+    any(as.logical(edgeData$isDirected), na.rm = TRUE)
 }
 
 .duplicateUndirectedEdges <- function(edgeTable) {
@@ -29,6 +51,18 @@
     duplicateTable$toFeatureName <- oldFromName
     duplicateTable$toAssayName <- oldFromAssay
 
+    # Mirroring an already-mirrored table must be a no-op, otherwise composing
+    # combineNetworks() with createNetworkGraph() gives four copies of every
+    # undirected edge. The mirror of a mirror is the original row, so dropping
+    # reverses that are already present makes this idempotent.
+    if (nrow(duplicateTable)) {
+        alreadyPresent <- .edgeRowKey(duplicateTable) %in% .edgeRowKey(edgeData)
+        duplicateTable <- duplicateTable[!alreadyPresent, , drop = FALSE]
+    }
+    if (!nrow(duplicateTable)) {
+        return(edgeTable)
+    }
+
     .coerceStandardEdgeTable(rbind(edgeData, duplicateTable), nodeTable = nodeTable)
 }
 
@@ -42,7 +76,28 @@
 
     if (!is.null(rewiringTable)) {
         rewiringTable <- .asPlainDataFrame(rewiringTable)
-        joinColumn <- if ("nodeKey" %in% names(rewiringTable)) "nodeKey" else "nodeIdentifier"
+        if (!any(c("nodeKey", "nodeIdentifier") %in% names(rewiringTable))) {
+            stop("`rewiringTable` must contain `nodeKey` or `nodeIdentifier`.", call. = FALSE)
+        }
+        joinColumn <- if ("nodeKey" %in% names(rewiringTable)) {
+            "nodeKey"
+        } else {
+            if (anyDuplicated(nodeTable$nodeIdentifier)) {
+                stop(
+                    "`rewiringTable` must contain `nodeKey` when feature identifiers occur in multiple assays.",
+                    call. = FALSE
+                )
+            }
+            "nodeIdentifier"
+        }
+        if (anyDuplicated(rewiringTable[[joinColumn]])) {
+            stop(
+                "`rewiringTable` must contain at most one row per `",
+                joinColumn,
+                "`.",
+                call. = FALSE
+            )
+        }
         rewiringTable <- rewiringTable[
             ,
             setdiff(names(rewiringTable), setdiff(.standardNodeColumns(), joinColumn)),
@@ -96,7 +151,8 @@
 #' @param networkList Optional additional edge table or list of edge
 #'   tables.
 #' @param includeReverseEdges Whether to duplicate undirected edges to
-#'   support directed graph traversal.
+#'   support directed graph traversal. See Details before enabling it for a
+#'   table you intend to score.
 #' @param removeDuplicates Whether to remove exactly duplicated edge
 #'   rows after standardization.
 #' @param resultName Name used when storing the combined network.
@@ -104,6 +160,19 @@
 #'
 #' @return A standardized edge `DataFrame` or an updated
 #'   `MultiAssayExperiment`.
+#' @details `includeReverseEdges = TRUE` appends a reversed copy of every
+#'   undirected edge. That is what you want for traversal and for export to
+#'   tools that expect an explicit adjacency list, and it is the default for
+#'   that reason.
+#'
+#'   It is not what you want for anything that treats the table as a set of
+#'   edges. [calculateRewiringScores()] rejects duplicate or mirrored edges
+#'   because they would double every node's degree and multiply
+#'   `rawRewiringScore` by `sqrt(2)`. An undirected [createNetworkGraph()] built
+#'   from a mirrored table gains parallel edges.
+#'   Score first, then combine with reverse edges for export, or pass
+#'   `includeReverseEdges = FALSE` and let [createNetworkGraph()] handle
+#'   direction.
 #' @examples
 #' analysisData <- exampleAnalysisData()
 #' knowledgeNetwork <- exampleKnowledgeNetwork()
@@ -278,11 +347,11 @@ createFocusedNetwork <- function(
     nodeIdType <- match.arg(nodeIdType)
     networkEdgeTable <- .coerceStandardEdgeTable(networkEdgeTable)
     .assertScalarLogical(dropIsolatedNodes, "dropIsolatedNodes")
-    if (!is.numeric(neighborhoodOrder) || length(neighborhoodOrder) != 1L ||
-        is.na(neighborhoodOrder) || neighborhoodOrder < 0 ||
-        neighborhoodOrder != as.integer(neighborhoodOrder)) {
-        stop("`neighborhoodOrder` must be a non-negative integer.", call. = FALSE)
-    }
+    neighborhoodOrder <- .assertWholeNumber(
+        neighborhoodOrder,
+        "neighborhoodOrder",
+        minimum = 0L
+    )
 
     inputNodeTable <- .getStoredNodeTable(networkEdgeTable, fallbackToEdges = TRUE)
     edgeData <- .asPlainDataFrame(networkEdgeTable)
@@ -291,9 +360,23 @@ createFocusedNetwork <- function(
     graphVertices <- .asPlainDataFrame(inputNodeTable)
     graphVertices$name <- graphVertices$nodeKey
 
+    # Traverse on a mirrored copy when the graph is directed, so an undirected
+    # edge is reachable from both ends. The returned edges come from edgeData,
+    # so this never leaks duplicates into the result.
+    graphDirected <- .graphIsDirected(edgeData)
+    traversalEdges <- if (graphDirected) {
+        .asPlainDataFrame(.duplicateUndirectedEdges(networkEdgeTable))
+    } else {
+        edgeData
+    }
+
     graphObject <- igraph::graph_from_data_frame(
-        d = data.frame(from = edgeData$fromNodeKey, to = edgeData$toNodeKey, stringsAsFactors = FALSE),
-        directed = any(as.logical(edgeData$isDirected), na.rm = TRUE),
+        d = data.frame(
+            from = .nodeKey(traversalEdges$fromAssayName, traversalEdges$fromFeatureIdentifier),
+            to = .nodeKey(traversalEdges$toAssayName, traversalEdges$toFeatureIdentifier),
+            stringsAsFactors = FALSE
+        ),
+        directed = graphDirected,
         vertices = graphVertices
     )
 

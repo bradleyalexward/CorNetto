@@ -42,7 +42,9 @@ retained in the final network.}
 \item{adjustedPValueThreshold}{Maximum adjusted p-value retained in
 the final network.}
 
-\item{pAdjustMethod}{Multiple-testing correction method.}
+\item{pAdjustMethod}{Multiple-testing correction method. Use one of
+\code{stats::p.adjust.methods} or \code{"qvalue"}; the latter requires the suggested
+\code{qvalue} package.}
 
 \item{featureNameColumn}{Row-data column containing display names.}
 
@@ -57,9 +59,30 @@ A standardized edge \code{DataFrame} or an updated
 }
 \description{
 Create a within-omic correlation network for one assay and one sample
-group. Dense all-pairs mode is intended for small-to-medium assays;
-use prior-guided sparse correlations for large omics assays when
-possible.
+group. All pairs in the assay are tested, which is intended for
+small-to-medium assays. For large assays, restrict the feature set with
+\code{\link[=filterFeatures]{filterFeatures()}} or \code{featureSubset}, or work from prior-supported pairs
+with \code{testDifferentialCorrelation(candidateEdgeTable = ...)}.
+}
+\details{
+Pearson p-values come from the t statistic
+\eqn{t = r * sqrt((n - 2) / (1 - r^2))} on \eqn{n - 2} degrees of
+freedom, matching
+\code{\link[stats:cor.test]{stats::cor.test()}}. Spearman and Kendall p-values are taken from
+\code{\link[stats:cor.test]{stats::cor.test()}} with \code{exact = FALSE}, using its asymptotic
+approximations. Tied ranks are permitted; Kendall's estimate is tau-b.
+
+Correlations use pairwise complete observations, so \code{n} varies by pair and
+is reported per edge in \code{sampleCount}. Pairs with fewer than three shared
+observations, and pairs where either feature is constant, have no test and
+are dropped rather than reported as non-significant.
+
+The Pearson t test assumes independent observations and approximate
+bivariate normality for each pair. Pairwise deletion is defensible only
+when the missingness process is ignorable for the correlation of interest;
+abundance-dependent missingness in proteomics or metabolomics can violate
+that condition. Rank correlations reduce sensitivity to outliers but do
+not remove the independence or missingness assumptions.
 }
 \examples{
 analysisData <- exampleAnalysisData()
@@ -71,4 +94,12 @@ correlationNetwork <- createCorrelationNetwork(
     storeResult = FALSE
 )
 correlationNetwork
+}
+\references{
+Benjamini Y, Hochberg Y (1995). Controlling the false discovery rate.
+\emph{Journal of the Royal Statistical Society B}, 57, 289-300.
+\doi{10.1111/j.2517-6161.1995.tb02031.x}
+
+Storey JD, Tibshirani R (2003). Statistical significance for genomewide
+studies. \emph{PNAS}, 100, 9440-9445. \doi{10.1073/pnas.1530509100}
 }

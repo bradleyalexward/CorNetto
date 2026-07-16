@@ -1,0 +1,40 @@
+## Accented names are written as \u escapes so that this file stays ASCII and
+## parses identically under any locale.
+
+citHeader("To cite CorNetto in publications, use:")
+
+bibentry(
+    bibtype = "Manual",
+    title = "CorNetto: Knowledge-Guided Multi-Omic Correlation Network Analysis",
+    author = c(
+        person("Bradley", "Ward"),
+        person("Laurent", "Gatto"),
+        person("Jean-Luc", "Balligand"),
+        person("Laurence", "Bamps"),
+        person("Patrice D.", "Cani"),
+        person("Julien", "De Greef"),
+        person("Joseph P.", "Dewulf"),
+        person("Vincent", "Haufroid"),
+        person("Beno\u00eet", "Kabamba"),
+        person("S\u00e9bastien", "Pyr dit Ruys"),
+        person("Didier", "Vertommen"),
+        person("Jean Cyr", "Yombi"),
+        person("Le\u00efla", "Belkhir"),
+        person("Laure", "Elens")
+    ),
+    year = "2026",
+    note = paste("R package version", meta$Version),
+    url = "https://github.com/bradleyalexward/CorNetto",
+    textVersion = paste(
+        "Ward B, Gatto L, Balligand J-L, Bamps L, Cani PD, De Greef J,",
+        "Dewulf JP, Haufroid V, Kabamba B, Pyr dit Ruys S, Vertommen D,",
+        "Yombi JC, Belkhir L, Elens L (2026). CorNetto:",
+        "Knowledge-Guided Multi-Omic Correlation Network Analysis.",
+        paste0("R package version ", meta$Version, "."),
+        "https://github.com/bradleyalexward/CorNetto"
+    )
+)
+
+citFooter(
+    "Le\u00efla Belkhir and Laure Elens are joint senior authors."
+)

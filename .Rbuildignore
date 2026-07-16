@@ -1,6 +1,4 @@
-^Folder not to be included in final package$
 ^data-raw$
-^README\.md$
 ^\.github$
 ^CITATION\.cff$
 ^\.git$
@@ -11,3 +9,7 @@
 ^CorNetto\.Rcheck$
 ^CorNetto_[0-9.]+\.tar\.gz$
 ^CorNetto\.BiocCheck$
+^check-package\.R$
+^Logo\.png$
+^Flowchart\.png$
+^PRE_SUBMISSION_REVIEW\.md$

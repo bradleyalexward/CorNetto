@@ -24,9 +24,14 @@ default \code{NULL} keeps all rewiring-scoring edges returned by
 \code{testDifferentialCorrelation()}.}
 
 \item{minimumAbsoluteCorrelation}{Minimum absolute correlation used to
-classify gains, losses, sign flips, and strengthening or weakening.}
+classify gains, losses, sign flips, and strengthening or weakening. Note
+that this is independent of the prefilter applied by
+\code{\link[=testDifferentialCorrelation]{testDifferentialCorrelation()}}: if you change one, change the other, or
+the labels will disagree with which edges are present.}
 
-\item{edgeWeightMethod}{Method used to generate the edge weight.}
+\item{edgeWeightMethod}{Method used to generate the edge weight.
+\code{"signedZScore"} keeps the sign of \code{zScoreDifference}; \code{"absoluteZScore"}
+takes its magnitude. See Details for what the sign means.}
 
 \item{analysisData}{Optional \code{MultiAssayExperiment} used to store the
 weighted differential network.}
@@ -37,11 +42,27 @@ network.}
 \item{storeResult}{Whether to store the result in \code{analysisData}.}
 }
 \value{
-A standardized edge \code{DataFrame}.
+A standardized edge \code{DataFrame}, or the updated
+\code{MultiAssayExperiment} when \code{storeResult = TRUE}.
 }
 \description{
 Convert the output of \code{testDifferentialCorrelation()} into a weighted
 edge table with rewiring-oriented labels.
+}
+\details{
+\code{edgeWeightMethod} does not affect any rewiring score, because
+\code{\link[=calculateRewiringScores]{calculateRewiringScores()}} squares the weight. It matters only when you
+read or export \code{edgeWeight} directly.
+
+Under \code{"signedZScore"} the weight inherits the Fisher statistic's
+group-2-minus-group-1 orientation: a \strong{positive}
+weight means the pair is more strongly correlated in the second of the
+\code{groupLevels} passed to \code{\link[=testDifferentialCorrelation]{testDifferentialCorrelation()}}. The
+\code{edgeDirection} labels run the other way, being named from group 1's point
+of view, so \code{gainInGroup1} edges carry negative weights.
+
+\code{edgeDirection} is \code{NA} when either group has no correlation to compare,
+which happens when a feature is constant within that group.
 }
 \examples{
 analysisData <- exampleAnalysisData()

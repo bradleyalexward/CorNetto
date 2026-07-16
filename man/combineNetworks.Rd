@@ -33,7 +33,8 @@ correlation edge table or list of edge tables.}
 tables.}
 
 \item{includeReverseEdges}{Whether to duplicate undirected edges to
-support directed graph traversal.}
+support directed graph traversal. See Details before enabling it for a
+table you intend to score.}
 
 \item{removeDuplicates}{Whether to remove exactly duplicated edge
 rows after standardization.}
@@ -49,6 +50,21 @@ A standardized edge \code{DataFrame} or an updated
 \description{
 Combine knowledge edges, correlation edges, differential-correlation
 edges, or other standardized CorNetto edge tables into one network.
+}
+\details{
+\code{includeReverseEdges = TRUE} appends a reversed copy of every
+undirected edge. That is what you want for traversal and for export to
+tools that expect an explicit adjacency list, and it is the default for
+that reason.
+
+It is not what you want for anything that treats the table as a set of
+edges. \code{\link[=calculateRewiringScores]{calculateRewiringScores()}} rejects duplicate or mirrored edges
+because they would double every node's degree and multiply
+\code{rawRewiringScore} by \code{sqrt(2)}. An undirected \code{\link[=createNetworkGraph]{createNetworkGraph()}} built
+from a mirrored table gains parallel edges.
+Score first, then combine with reverse edges for export, or pass
+\code{includeReverseEdges = FALSE} and let \code{\link[=createNetworkGraph]{createNetworkGraph()}} handle
+direction.
 }
 \examples{
 analysisData <- exampleAnalysisData()

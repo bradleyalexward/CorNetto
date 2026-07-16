@@ -13,14 +13,35 @@
         method = "pearson"
     )
     sampleCountMatrix <- tcrossprod(!is.na(assayMatrix))
-    denominator <- pmax(1e-12, 1 - (correlationMatrix ^ 2))
-    statisticMatrix <- correlationMatrix * sqrt(pmax(sampleCountMatrix - 2, 0) / denominator)
-    pValueMatrix <- 2 * stats::pt(
-        q = abs(statisticMatrix),
-        df = pmax(sampleCountMatrix - 2, 1),
+    statisticMatrix <- matrix(
+        NA_real_,
+        nrow = nrow(correlationMatrix),
+        ncol = ncol(correlationMatrix),
+        dimnames = dimnames(correlationMatrix)
+    )
+    testable <- !is.na(correlationMatrix) & sampleCountMatrix >= 3L
+    perfect <- testable & abs(correlationMatrix) >= 1
+    regular <- testable & !perfect
+    statisticMatrix[perfect] <- sign(correlationMatrix[perfect]) * Inf
+    statisticMatrix[regular] <- correlationMatrix[regular] * sqrt(
+        (sampleCountMatrix[regular] - 2) /
+            (1 - correlationMatrix[regular] ^ 2)
+    )
+    pValueMatrix <- matrix(
+        NA_real_,
+        nrow = nrow(correlationMatrix),
+        ncol = ncol(correlationMatrix),
+        dimnames = dimnames(correlationMatrix)
+    )
+    pValueMatrix[testable] <- 2 * stats::pt(
+        q = abs(statisticMatrix[testable]),
+        df = sampleCountMatrix[testable] - 2,
         lower.tail = FALSE
     )
 
+    # cor() still returns +/-1 through two points, but there is no test to go
+    # with it; drop both so an untestable pair cannot reach the edge table.
+    correlationMatrix[sampleCountMatrix < 3] <- NA_real_
     pValueMatrix[sampleCountMatrix < 3] <- NA_real_
     diag(pValueMatrix) <- 0
     diag(correlationMatrix) <- 1
@@ -65,41 +86,23 @@
     diag(pValueMatrix) <- 0
     diag(sampleCountMatrix) <- rowSums(!is.na(assayMatrix))
 
-    for (rowIndex in seq_len(featureCount - 1L)) {
-        for (columnIndex in seq.int(rowIndex + 1L, featureCount)) {
-            x <- as.numeric(assayMatrix[rowIndex, ])
-            y <- as.numeric(assayMatrix[columnIndex, ])
-            completeIndex <- stats::complete.cases(x, y)
-
-            if (sum(completeIndex) < 3L) {
-                next
-            }
-            sampleCount <- sum(completeIndex)
-
-            testResult <- tryCatch(
-                suppressWarnings(
-                    stats::cor.test(
-                        x = x[completeIndex],
-                        y = y[completeIndex],
-                        method = correlationMethod,
-                        exact = FALSE
-                    )
-                ),
-                error = function(...) NULL
+    for (i in seq_len(featureCount - 1L)) {
+        for (j in seq.int(i + 1L, featureCount)) {
+            testResult <- .runCorrelationTest(
+                x = as.numeric(assayMatrix[i, ]),
+                y = as.numeric(assayMatrix[j, ]),
+                correlationMethod = correlationMethod
             )
-
             if (is.null(testResult)) {
                 next
             }
 
-            estimate <- unname(testResult$estimate[[1L]])
-            pValue <- unname(testResult$p.value)
-            correlationMatrix[rowIndex, columnIndex] <- estimate
-            correlationMatrix[columnIndex, rowIndex] <- estimate
-            pValueMatrix[rowIndex, columnIndex] <- pValue
-            pValueMatrix[columnIndex, rowIndex] <- pValue
-            sampleCountMatrix[rowIndex, columnIndex] <- sampleCount
-            sampleCountMatrix[columnIndex, rowIndex] <- sampleCount
+            correlationMatrix[i, j] <- testResult$correlationValue
+            correlationMatrix[j, i] <- testResult$correlationValue
+            pValueMatrix[i, j] <- testResult$pValue
+            pValueMatrix[j, i] <- testResult$pValue
+            sampleCountMatrix[i, j] <- testResult$sampleCount
+            sampleCountMatrix[j, i] <- testResult$sampleCount
         }
     }
 
@@ -175,9 +178,14 @@
         keepIndex <- keepIndex & abs(edgeTable$correlationValue) >= minimumAbsoluteCorrelation
     }
     if (!is.null(adjustedPValueThreshold)) {
-        keepIndex <- keepIndex & edgeTable$adjustedPValue <= adjustedPValueThreshold
+        # An NA here means the pair was never testable, not that it failed the
+        # threshold. Without the is.na() guard keepIndex carries NA and
+        # subsetting a data frame with NA appends a row of all-missing values.
+        keepIndex <- keepIndex &
+            !is.na(edgeTable$adjustedPValue) &
+            edgeTable$adjustedPValue <= adjustedPValueThreshold
     }
-    edgeTable <- edgeTable[keepIndex, , drop = FALSE]
+    edgeTable <- edgeTable[which(keepIndex), , drop = FALSE]
 
     if (!nrow(edgeTable)) {
         return(.emptyStandardEdgeTable())
@@ -259,9 +267,10 @@
 #' Create a Group-Specific Correlation Network
 #'
 #' Create a within-omic correlation network for one assay and one sample
-#' group. Dense all-pairs mode is intended for small-to-medium assays;
-#' use prior-guided sparse correlations for large omics assays when
-#' possible.
+#' group. All pairs in the assay are tested, which is intended for
+#' small-to-medium assays. For large assays, restrict the feature set with
+#' [filterFeatures()] or `featureSubset`, or work from prior-supported pairs
+#' with `testDifferentialCorrelation(candidateEdgeTable = ...)`.
 #'
 #' @param analysisData A `MultiAssayExperiment`.
 #' @param assayName Name of the assay to analyse.
@@ -275,7 +284,9 @@
 #'   retained in the final network.
 #' @param adjustedPValueThreshold Maximum adjusted p-value retained in
 #'   the final network.
-#' @param pAdjustMethod Multiple-testing correction method.
+#' @param pAdjustMethod Multiple-testing correction method. Use one of
+#'   `stats::p.adjust.methods` or `"qvalue"`; the latter requires the suggested
+#'   `qvalue` package.
 #' @param featureNameColumn Row-data column containing display names.
 #' @param resultName Optional name used when storing the result.
 #' @param storeResult Whether to store the result in
@@ -283,6 +294,31 @@
 #'
 #' @return A standardized edge `DataFrame` or an updated
 #'   `MultiAssayExperiment`.
+#' @details Pearson p-values come from the t statistic
+#'   \eqn{t = r * sqrt((n - 2) / (1 - r^2))} on \eqn{n - 2} degrees of
+#'   freedom, matching
+#'   [stats::cor.test()]. Spearman and Kendall p-values are taken from
+#'   [stats::cor.test()] with `exact = FALSE`, using its asymptotic
+#'   approximations. Tied ranks are permitted; Kendall's estimate is tau-b.
+#'
+#'   Correlations use pairwise complete observations, so `n` varies by pair and
+#'   is reported per edge in `sampleCount`. Pairs with fewer than three shared
+#'   observations, and pairs where either feature is constant, have no test and
+#'   are dropped rather than reported as non-significant.
+#'
+#'   The Pearson t test assumes independent observations and approximate
+#'   bivariate normality for each pair. Pairwise deletion is defensible only
+#'   when the missingness process is ignorable for the correlation of interest;
+#'   abundance-dependent missingness in proteomics or metabolomics can violate
+#'   that condition. Rank correlations reduce sensitivity to outliers but do
+#'   not remove the independence or missingness assumptions.
+#' @references
+#' Benjamini Y, Hochberg Y (1995). Controlling the false discovery rate.
+#' \emph{Journal of the Royal Statistical Society B}, 57, 289-300.
+#' \doi{10.1111/j.2517-6161.1995.tb02031.x}
+#'
+#' Storey JD, Tibshirani R (2003). Statistical significance for genomewide
+#' studies. \emph{PNAS}, 100, 9440-9445. \doi{10.1073/pnas.1530509100}
 #' @examples
 #' analysisData <- exampleAnalysisData()
 #' correlationNetwork <- createCorrelationNetwork(
@@ -311,6 +347,19 @@ createCorrelationNetwork <- function(
 ) {
     analysisData <- validateAnalysisData(analysisData, quiet = TRUE)
     correlationMethod <- match.arg(correlationMethod)
+    minimumAbsoluteCorrelation <- .validateUnitInterval(
+        minimumAbsoluteCorrelation,
+        "minimumAbsoluteCorrelation",
+        allowNull = TRUE
+    )
+    adjustedPValueThreshold <- .validateUnitInterval(
+        adjustedPValueThreshold,
+        "adjustedPValueThreshold",
+        allowNull = TRUE
+    )
+    pAdjustMethod <- .validatePAdjustMethod(pAdjustMethod)
+    .assertScalarCharacter(featureNameColumn, "featureNameColumn")
+    .assertScalarLogical(storeResult, "storeResult")
     sampleIds <- .resolveGroupSamples(
         analysisData = analysisData,
         groupColumn = groupColumn,
