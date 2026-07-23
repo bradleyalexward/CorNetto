@@ -1,6 +1,6 @@
 Package: CorNetto
 Title: Knowledge-Guided Multi-Omic Correlation Network Analysis
-Version: 0.99.4
+Version: 0.99.5
 Authors@R: c(
     person("Bradley", "Ward", role = c("aut", "cre"),
            email = "bradleyalexward@gmail.com"),
@@ -38,6 +38,7 @@ Encoding: UTF-8
 Depends:
     R (>= 4.4.0)
 Imports:
+    BiocParallel,
     graphics,
     igraph,
     methods,
