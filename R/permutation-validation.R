@@ -218,6 +218,83 @@
     )
 }
 
+.makePermutationJobs <- function(indices, permutedLabels, nWorkers) {
+    nJobs <- min(length(indices), nWorkers)
+    breaks <- floor(seq.int(0, length(indices), length.out = nJobs + 1L))
+
+    lapply(seq_len(nJobs), function(i) {
+        positions <- seq.int(breaks[[i]] + 1L, breaks[[i + 1L]])
+        jobIndices <- indices[positions]
+        list(
+            indices = jobIndices,
+            labels = permutedLabels[jobIndices]
+        )
+    })
+}
+
+.scorePermutationJob <- function(job, analysisData, settings) {
+    scoreTables <- vector("list", length(job$indices))
+    edgeSetComplete <- rep(TRUE, length(job$indices))
+
+    for (i in seq_along(job$indices)) {
+        permutationIndex <- job$indices[[i]]
+        permutedAnalysisData <- .setTemporaryGroupColumn(
+            analysisData = analysisData,
+            groupColumn = settings$temporaryGroupColumn,
+            groupLabels = job$labels[[i]]
+        )
+
+        # The observed run has already warned about group and assay sizes;
+        # repeating that once per permutation is noise.
+        permutationResult <- suppressWarnings(.scoreSingleDifferentialRewiring(
+            analysisData = permutedAnalysisData,
+            groupColumn = settings$temporaryGroupColumn,
+            groupLevels = settings$groupLevels,
+            assayName = settings$assayName,
+            candidateEdgeTable = settings$candidateEdgeTable,
+            featureSubset = settings$featureSubset,
+            correlationMethod = settings$correlationMethod,
+            minimumAbsoluteCorrelation = settings$minimumAbsoluteCorrelation,
+            adjustedPValueThreshold = settings$adjustedPValueThreshold,
+            pAdjustMethod = settings$pAdjustMethod,
+            featureNameColumn = settings$featureNameColumn,
+            differenceAdjustedPValueThreshold =
+                settings$differenceAdjustedPValueThreshold,
+            edgeWeightMethod = settings$edgeWeightMethod,
+            fixedEdgeUniverse = settings$edgeUniverse
+        ))
+
+        if (settings$fixedCandidateDesign) {
+            edgeSetComplete[[i]] <- .sameDifferentialEdgeSet(
+                permutationResult$differentialCorrelationNetwork,
+                settings$edgeUniverse
+            )
+        }
+
+        if (!nrow(permutationResult$rewiringTable)) {
+            next
+        }
+
+        permutationScores <- .asPlainDataFrame(permutationResult$rewiringTable)
+        scoreTables[[i]] <- data.frame(
+            nodeKey = permutationScores$nodeKey,
+            permutation = permutationIndex,
+            rawRewiringScore = permutationScores$rawRewiringScore,
+            rootMeanSquareRewiringScore =
+                permutationScores$rootMeanSquareRewiringScore,
+            degreeMatchedZScore = permutationScores$degreeMatchedZScore,
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+        )
+    }
+
+    list(
+        indices = job$indices,
+        scoreTables = scoreTables,
+        edgeSetComplete = edgeSetComplete
+    )
+}
+
 #' Permute Rewiring Scores
 #'
 #' Permute group labels, rerun differential correlation testing, rebuild
@@ -229,13 +306,21 @@
 #' @param nPermutations Number of group-label permutations.
 #' @param blockColumn Optional sample metadata column. When supplied,
 #'   group labels are permuted within each block.
-#' @param seed Optional random seed.
+#' @param seed Optional random seed. Label allocations are generated before
+#'   parallel work is dispatched, so the same seed gives the same allocations
+#'   for serial and parallel backends.
 #' @param keepPermutationScores Whether to return the node-by-permutation
 #'   score table.
 #' @param scoreColumn Rewiring-score column used to compute permutation tail
 #'   probabilities.
 #' @param resultName Optional storage name.
 #' @param storeResult Whether to store the result in `analysisData`.
+#' @param verbose Whether to report permutation progress.
+#' @param progressEvery Number of completed permutations between progress
+#'   messages. This also sets the size of each parallel batch.
+#' @param BPPARAM A [BiocParallel::BiocParallelParam] object controlling
+#'   execution. The default [BiocParallel::SerialParam()] runs sequentially.
+#'   On Windows, use [BiocParallel::SnowParam()] for parallel execution.
 #'
 #' @return A named list containing the observed differential-correlation
 #'   table, observed differential network, rewiring validation table, and
@@ -281,8 +366,20 @@
 #'   implemented. With 1,000 draws the minimum is about 0.001, which is often
 #'   too coarse after adjustment across many nodes.
 #'
-#'   `seed` is applied with [withr::local_seed()], which restores the calling
-#'   RNG state on exit, so calling this function does not advance your stream.
+#'   When `seed` is supplied, it is applied with [withr::local_seed()], which
+#'   restores the calling RNG state on exit. With `seed = NULL`, the label
+#'   draws use and advance the caller's current RNG stream.
+#'   Label allocations are generated in permutation-index order before scoring
+#'   begins. Parallel workers therefore perform deterministic calculations,
+#'   and a fixed `seed` gives the same result regardless of worker count.
+#'
+#'   Parallel scoring is opt-in through `BPPARAM`; the default remains serial.
+#'   When `verbose = TRUE`, the manager reports progress after each batch of up
+#'   to `progressEvery` permutations. A stopped backend is started for the call
+#'   and stopped on exit. A backend that was already running is left running.
+#'   Each socket worker receives its own copy of the analysis inputs, so memory
+#'   use should be considered when choosing the worker count. Interrupted runs
+#'   cannot currently be resumed from a partial batch.
 #' @references
 #' Phipson B, Smyth GK (2010). Permutation p-values should never be zero:
 #' calculating exact p-values when permutations are randomly drawn.
@@ -323,7 +420,10 @@ permuteRewiringScores <- function(
     seed = NULL,
     keepPermutationScores = FALSE,
     resultName = NULL,
-    storeResult = FALSE
+    storeResult = FALSE,
+    verbose = FALSE,
+    progressEvery = 300L,
+    BPPARAM = BiocParallel::SerialParam()
 ) {
     analysisData <- validateAnalysisData(analysisData, quiet = TRUE)
     correlationMethod <- match.arg(correlationMethod)
@@ -349,6 +449,18 @@ permuteRewiringScores <- function(
     .assertScalarCharacter(featureNameColumn, "featureNameColumn")
     .assertScalarLogical(keepPermutationScores, "keepPermutationScores")
     .assertScalarLogical(storeResult, "storeResult")
+    .assertScalarLogical(verbose, "verbose")
+    progressEvery <- .assertWholeNumber(
+        progressEvery,
+        "progressEvery",
+        minimum = 1L
+    )
+    if (!methods::is(BPPARAM, "BiocParallelParam")) {
+        stop(
+            "`BPPARAM` must be a BiocParallelParam object.",
+            call. = FALSE
+        )
+    }
     if (!is.null(blockColumn)) {
         .assertScalarCharacter(blockColumn, "blockColumn")
     }
@@ -430,62 +542,83 @@ permuteRewiringScores <- function(
             edgeUniverse
         )
 
-    permutationScoreList <- vector("list", nPermutations)
-    for (permutationIndex in seq_len(nPermutations)) {
-        permutedLabels <- .permuteGroupLabels(
+    permutedLabels <- lapply(seq_len(nPermutations), function(i) {
+        .permuteGroupLabels(
             sampleData = sampleData,
             groupColumn = groupColumn,
             groupLevels = groupLevels,
             blockColumn = blockColumn
         )
-        permutedAnalysisData <- .setTemporaryGroupColumn(
-            analysisData = analysisData,
-            groupColumn = temporaryGroupColumn,
-            groupLabels = permutedLabels
-        )
+    })
 
-        # The observed run has already warned about group and assay sizes;
-        # repeating that once per permutation is noise.
-        permutationResult <- suppressWarnings(.scoreSingleDifferentialRewiring(
-            analysisData = permutedAnalysisData,
-            groupColumn = temporaryGroupColumn,
-            groupLevels = groupLevels,
-            assayName = assayName,
-            candidateEdgeTable = candidateEdgeTable,
-            featureSubset = featureSubset,
-            correlationMethod = correlationMethod,
-            minimumAbsoluteCorrelation = minimumAbsoluteCorrelation,
-            adjustedPValueThreshold = adjustedPValueThreshold,
-            pAdjustMethod = pAdjustMethod,
-            featureNameColumn = featureNameColumn,
-            differenceAdjustedPValueThreshold = differenceAdjustedPValueThreshold,
-            edgeWeightMethod = edgeWeightMethod,
-            fixedEdgeUniverse = edgeUniverse
-        ))
+    permutationScoreList <- vector("list", nPermutations)
+    edgeSetComplete <- rep(TRUE, nPermutations)
+    nWorkers <- min(
+        nPermutations,
+        as.integer(BiocParallel::bpnworkers(BPPARAM))
+    )
+    settings <- list(
+        temporaryGroupColumn = temporaryGroupColumn,
+        groupLevels = groupLevels,
+        assayName = assayName,
+        candidateEdgeTable = candidateEdgeTable,
+        featureSubset = featureSubset,
+        correlationMethod = correlationMethod,
+        minimumAbsoluteCorrelation = minimumAbsoluteCorrelation,
+        adjustedPValueThreshold = adjustedPValueThreshold,
+        pAdjustMethod = pAdjustMethod,
+        featureNameColumn = featureNameColumn,
+        differenceAdjustedPValueThreshold = differenceAdjustedPValueThreshold,
+        edgeWeightMethod = edgeWeightMethod,
+        edgeUniverse = edgeUniverse,
+        fixedCandidateDesign = fixedCandidateDesign
+    )
 
-        if (fixedCandidateDesign) {
-            completeFixedUniverse <- completeFixedUniverse &&
-                .sameDifferentialEdgeSet(
-                    permutationResult$differentialCorrelationNetwork,
-                    edgeUniverse
-                )
-        }
+    backendWasRunning <- BiocParallel::bpisup(BPPARAM)
+    if (!backendWasRunning) {
+        BPPARAM <- BiocParallel::bpstart(BPPARAM)
+        on.exit(BiocParallel::bpstop(BPPARAM), add = TRUE)
+    }
 
-        if (!nrow(permutationResult$rewiringTable)) {
-            next
-        }
-
-        permutationScores <- .asPlainDataFrame(permutationResult$rewiringTable)
-        permutationScoreList[[permutationIndex]] <- data.frame(
-            nodeKey = permutationScores$nodeKey,
-            permutation = permutationIndex,
-            rawRewiringScore = permutationScores$rawRewiringScore,
-            rootMeanSquareRewiringScore = permutationScores$rootMeanSquareRewiringScore,
-            degreeMatchedZScore = permutationScores$degreeMatchedZScore,
-            stringsAsFactors = FALSE,
-            check.names = FALSE
+    if (verbose) {
+        message(
+            "Scoring ", nPermutations, " permutations with ", nWorkers,
+            if (nWorkers == 1L) " worker." else " workers."
         )
     }
+
+    batchStarts <- seq.int(1L, nPermutations, by = progressEvery)
+    for (batchStart in batchStarts) {
+        batchEnd <- min(batchStart + progressEvery - 1L, nPermutations)
+        indices <- seq.int(batchStart, batchEnd)
+        jobs <- .makePermutationJobs(
+            indices = indices,
+            permutedLabels = permutedLabels,
+            nWorkers = nWorkers
+        )
+        jobResults <- BiocParallel::bplapply(
+            jobs,
+            .scorePermutationJob,
+            analysisData = analysisData,
+            settings = settings,
+            BPPARAM = BPPARAM
+        )
+
+        for (jobResult in jobResults) {
+            permutationScoreList[jobResult$indices] <- jobResult$scoreTables
+            edgeSetComplete[jobResult$indices] <- jobResult$edgeSetComplete
+        }
+
+        if (verbose) {
+            message(
+                "Completed ", batchEnd, " of ", nPermutations,
+                " permutations (",
+                sprintf("%.1f", 100 * batchEnd / nPermutations),
+                "%)."
+            )
+        }
+    }
+    completeFixedUniverse <- completeFixedUniverse && all(edgeSetComplete)
 
     permutationScores <- Filter(Negate(is.null), permutationScoreList)
     if (length(permutationScores)) {
