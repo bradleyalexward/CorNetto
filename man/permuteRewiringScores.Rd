@@ -24,7 +24,10 @@ permuteRewiringScores(
   seed = NULL,
   keepPermutationScores = FALSE,
   resultName = NULL,
-  storeResult = FALSE
+  storeResult = FALSE,
+  verbose = FALSE,
+  progressEvery = 300L,
+  BPPARAM = BiocParallel::SerialParam()
 )
 }
 \arguments{
@@ -82,7 +85,9 @@ probabilities.}
 \item{blockColumn}{Optional sample metadata column. When supplied,
 group labels are permuted within each block.}
 
-\item{seed}{Optional random seed.}
+\item{seed}{Optional random seed. Label allocations are generated before
+parallel work is dispatched, so the same seed gives the same allocations
+for serial and parallel backends.}
 
 \item{keepPermutationScores}{Whether to return the node-by-permutation
 score table.}
@@ -90,6 +95,15 @@ score table.}
 \item{resultName}{Optional storage name.}
 
 \item{storeResult}{Whether to store the result in \code{analysisData}.}
+
+\item{verbose}{Whether to report permutation progress.}
+
+\item{progressEvery}{Number of completed permutations between progress
+messages. This also sets the size of each parallel batch.}
+
+\item{BPPARAM}{A \link[BiocParallel:BiocParallelParam]{BiocParallel::BiocParallelParam} object controlling
+execution. The default \code{\link[BiocParallel:SerialParam]{BiocParallel::SerialParam()}} runs sequentially.
+On Windows, use \code{\link[BiocParallel:SnowParam]{BiocParallel::SnowParam()}} for parallel execution.}
 }
 \value{
 A named list containing the observed differential-correlation
@@ -143,8 +157,20 @@ fully scored node is \code{1 / (B + 1)}. Exact enumeration of distinct assignmen
 implemented. With 1,000 draws the minimum is about 0.001, which is often
 too coarse after adjustment across many nodes.
 
-\code{seed} is applied with \code{\link[withr:local_seed]{withr::local_seed()}}, which restores the calling
-RNG state on exit, so calling this function does not advance your stream.
+When \code{seed} is supplied, it is applied with \code{\link[withr:local_seed]{withr::local_seed()}}, which
+restores the calling RNG state on exit. With \code{seed = NULL}, the label
+draws use and advance the caller's current RNG stream.
+Label allocations are generated in permutation-index order before scoring
+begins. Parallel workers therefore perform deterministic calculations,
+and a fixed \code{seed} gives the same result regardless of worker count.
+
+Parallel scoring is opt-in through \code{BPPARAM}; the default remains serial.
+When \code{verbose = TRUE}, the manager reports progress after each batch of up
+to \code{progressEvery} permutations. A stopped backend is started for the call
+and stopped on exit. A backend that was already running is left running.
+Each socket worker receives its own copy of the analysis inputs, so memory
+use should be considered when choosing the worker count. Interrupted runs
+cannot currently be resumed from a partial batch.
 }
 \examples{
 analysisData <- exampleAnalysisData()
