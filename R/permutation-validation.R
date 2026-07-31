@@ -299,7 +299,9 @@
 #'
 #' Permute group labels, rerun differential correlation testing, rebuild
 #' the differential network, and compare observed node scores with their
-#' permutation distributions.
+#' permutation distributions. When both `assayName` and `candidateEdgeTable`
+#' are `NULL`, every assay is tested densely within-omic; no cross-omic pairs
+#' are generated.
 #'
 #' @inheritParams testDifferentialCorrelation
 #' @inheritParams createDifferentialCorrelationNetwork
@@ -336,6 +338,13 @@
 #'   edge can still be unscored in a permutation when a group has fewer than
 #'   four pairwise-complete observations or a feature is constant, so realized
 #'   node degree can fall in some permutations.
+#'
+#'   Dense all-pairs mode follows [testDifferentialCorrelation()]: with
+#'   `assayName = NULL`, feature pairs are generated separately within every
+#'   assay and the assay-specific edge sets are combined for scoring. It never
+#'   creates cross-omic pairs. The resulting observed network defines the
+#'   combined within-omic edge universe reused throughout permutation
+#'   validation.
 #'   Tail probabilities use the Phipson and Smyth (2010) estimator,
 #'   `(1 + r) / (1 + B_i)`, where `B_i` is the number of permutations that
 #'   produced a score for the node. `contributingPermutations` reports `B_i`.
@@ -391,7 +400,6 @@
 #'     analysisData,
 #'     groupColumn = "clinicalGroup",
 #'     groupLevels = c("Recovered", "PASC"),
-#'     assayName = "protein",
 #'     minimumAbsoluteCorrelation = 0,
 #'     adjustedPValueThreshold = 1,
 #'     pAdjustMethod = "fdr",
