@@ -643,23 +643,80 @@ testDifferentialCorrelation <- function(
     }
 
     if (is.null(candidateEdgeTable)) {
+    allAssays <- is.null(assayName)
+    if (allAssays) {
+        assayNames <- names(MultiAssayExperiment::experiments(analysisData))
+    } else {
         .assertScalarCharacter(assayName, "assayName")
+        assayNames <- assayName
+    }
+
+    rawResultList <- vector("list", length(assayNames))
+    names(rawResultList) <- assayNames
+
+    for (currentAssay in assayNames) {
+        assayFeatureSubset <- featureSubset
+
+        if (allAssays && !is.null(featureSubset)) {
+            assayFeatureSubset <- .resolveAssayFilterArgument(
+                argumentValue = featureSubset,
+                assayName = currentAssay,
+                default = NULL
+            )
+
+            if (!is.null(assayFeatureSubset)) {
+                assayFeatureSubset <- unique(as.character(assayFeatureSubset))
+
+                if (anyNA(assayFeatureSubset) ||
+                    any(!nzchar(assayFeatureSubset))) {
+                    stop(
+                        "`featureSubset` must be non-missing and non-empty.",
+                        call. = FALSE
+                    )
+                }
+
+                assayFeatureSubset <- intersect(
+                    rownames(.extractAssayMatrix(
+                        analysisData,
+                        currentAssay
+                    )),
+                    assayFeatureSubset
+                )
+            }
+        }
+
         sharedFeatures <- .resolveFeatureSubset(
             analysisData = analysisData,
-            assayName = assayName,
-            featureSubset = featureSubset
+            assayName = currentAssay,
+            featureSubset = assayFeatureSubset
         )
-        rawResults <- .computeDifferentialCorrelationAllPairs(
-            analysisData = analysisData,
-            assayName = assayName,
-            sharedFeatures = sharedFeatures,
-            group1SampleIds = group1SampleIds,
-            group2SampleIds = group2SampleIds,
-            groupLevels = groupLevels,
-            correlationMethod = correlationMethod,
-            featureNameColumn = featureNameColumn
-        )
+
+        rawResultList[[currentAssay]] <- if (length(sharedFeatures) < 2L) {
+            .emptyStandardEdgeTable()
+        } else {
+            .computeDifferentialCorrelationAllPairs(
+                analysisData = analysisData,
+                assayName = currentAssay,
+                sharedFeatures = sharedFeatures,
+                group1SampleIds = group1SampleIds,
+                group2SampleIds = group2SampleIds,
+                groupLevels = groupLevels,
+                correlationMethod = correlationMethod,
+                featureNameColumn = featureNameColumn
+            )
+        }
+    }
+
+    rawResults <- if (length(rawResultList) == 1L) {
+        rawResultList[[1L]]
     } else {
+        combineNetworks(
+            networkList = rawResultList,
+            includeReverseEdges = FALSE,
+            removeDuplicates = FALSE
+        )
+    }
+} else {
         .warnOnSmallGroups(groupLevels, length(group1SampleIds), length(group2SampleIds))
         candidateEdgeTable <- .coerceStandardEdgeTable(candidateEdgeTable)
         rawResults <- .computeDifferentialCorrelationFromCandidates(
