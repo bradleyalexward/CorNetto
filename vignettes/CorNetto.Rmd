@@ -169,6 +169,9 @@ c(nrow(priorGuidedDifferentialResults), nrow(priorGuidedDifferentialNetwork))
 `permuteRewiringScores()` permutes group labels, recomputes the
 differential-correlation statistics over a fixed edge universe, and compares
 each node's observed rewiring score with the permutation distribution.
+When both `candidateEdgeTable` and `assayName` are omitted, that universe is
+built from dense within-omic pairs in every assay; cross-omic pairs are not
+generated.
 
 The fixed edge set is attempted in every permutation. An edge can still
 be unscored if a permuted group has insufficient pairwise-complete data or a
@@ -203,19 +206,48 @@ For a fully scored node, the smallest tail probability is
 each node. Treat the values as conditional rankings whenever
 `inferenceStatus` says so.
 
+Long runs can be parallelized by supplying a BiocParallel backend. On Windows,
+use a socket backend. Keep package examples and automated checks at two workers
+or fewer:
+
+```{r parallel-permutations, eval=FALSE}
+backend <- BiocParallel::SnowParam(
+    workers = 2,
+    type = "SOCK",
+    stop.on.error = TRUE,
+    progressbar = FALSE
+)
+
+parallelValidation <- permuteRewiringScores(
+    analysisData = analysisData,
+    candidateEdgeTable = measuredKnowledgeNetwork,
+    groupColumn = "clinicalGroup",
+    groupLevels = c("PASC", "Recovered"),
+    minimumAbsoluteCorrelation = 0,
+    adjustedPValueThreshold = NULL,
+    nPermutations = 999,
+    seed = 1,
+    verbose = TRUE,
+    progressEvery = 300,
+    BPPARAM = backend
+)
+```
+
 # Differential correlation and rewiring
 
 `testDifferentialCorrelation()` compares correlation coefficients between
 two groups. `createDifferentialCorrelationNetwork()` converts the test
 results to a weighted network, and `calculateRewiringScores()` summarizes
-node-level rewiring.
+node-level rewiring. When `assayName` is omitted, every assay is tested, but
+pairs are generated only within each assay: protein-protein and
+transcript-transcript pairs are included, for example, whereas
+protein-transcript pairs are not.
 
 ```{r differential-correlation}
 differentialResults <- testDifferentialCorrelation(
     analysisData = analysisData,
     groupColumn = "clinicalGroup",
     groupLevels = c("PASC", "Recovered"),
-    assayName = "protein",
     correlationMethod = "pearson",
     minimumAbsoluteCorrelation = 0,
     adjustedPValueThreshold = 1,
@@ -247,9 +279,10 @@ meaningful spread. `permuteRewiringScores()` adds a permutation reference;
 its `inferenceStatus` states whether the result meets the computational
 conditions for randomization inference.
 
-All five proteins here are mutually tested, so every node has degree four and
-they share a single degree bin. On a real network with a spread of degrees
-the bins do the work they are named for.
+Features are mutually tested only against features in the same assay. In this
+example, each protein and transcript node therefore has degree four, while
+each metabolite node has degree three. On a real network with a spread of
+degrees, the bins do the work they are named for.
 
 # Integrated and focused network
 
