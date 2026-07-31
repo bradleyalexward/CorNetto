@@ -1,4 +1,31 @@
-# CorNetto 0.99.4
+# CorNetto 1.0
+
+## Dense multi-assay analysis
+
+* `testDifferentialCorrelation()` now treats `assayName = NULL` as dense
+  testing across every assay. Feature pairs are generated separately within
+  each assay and then combined, so no cross-omic pairs are introduced.
+
+* `permuteRewiringScores()` inherits the same behavior: when both `assayName`
+  and `candidateEdgeTable` are `NULL`, the observed analysis covers dense
+  within-omic pairs from every assay, and permutations reuse the selected
+  observed edge universe without introducing cross-omic pairs.
+
+## Permutation performance
+
+* `permuteRewiringScores()` now accepts a BiocParallel backend through
+  `BPPARAM`. Serial execution remains the default; `SnowParam` can be used for
+  parallel execution on Windows.
+
+* Label permutations are generated under the existing `seed` before scoring is
+  dispatched. The same seed therefore gives the same label allocations and
+  numerical results across supported backend and worker-count choices.
+
+* The new `verbose` and `progressEvery` arguments report completed
+  permutations at a user-controlled interval. Parallel work is synchronized at
+  the same interval, and interrupted calls cannot yet be resumed.
+
+  # CorNetto 0.99.4
 
 ## Statistical interface
 
