@@ -144,9 +144,8 @@ citation("CorNetto")
 
 A machine-readable citation is available in `CITATION.cff`.
 
-Differential correlation uses the Fisher z-difference test described in the
-function documentation; see `?testDifferentialCorrelation` for the method
-references and assumptions.
+
+
 
 ## License
 
