@@ -58,6 +58,76 @@ test_that("differential correlation and rewiring workflow returns expected colum
     )
 })
 
+test_that("NULL assayName runs dense within-omic testing across all assays", {
+    analysisData <- exampleAnalysisData()
+    differentialResults <- suppressWarnings(testDifferentialCorrelation(
+        analysisData = analysisData,
+        groupColumn = "clinicalGroup",
+        groupLevels = c("PASC", "Recovered"),
+        minimumAbsoluteCorrelation = 0,
+        adjustedPValueThreshold = 1,
+        storeResult = FALSE
+    ))
+
+    expect_equal(nrow(differentialResults), 26)
+    expect_equal(sum(differentialResults$fromAssayName == "protein"), 10)
+    expect_equal(sum(differentialResults$fromAssayName == "transcript"), 10)
+    expect_equal(sum(differentialResults$fromAssayName == "metabolite"), 6)
+    expect_true(all(
+        differentialResults$fromAssayName == differentialResults$toAssayName
+    ))
+    expect_true(all(differentialResults$correlationScope == "withinOmic"))
+    expect_equal(
+        differentialResults$adjustedPValue,
+        stats::p.adjust(differentialResults$pValue, method = "fdr")
+    )
+    expect_equal(
+        differentialResults$group1AdjustedPValue,
+        stats::p.adjust(differentialResults$group1PValue, method = "fdr")
+    )
+    expect_equal(
+        differentialResults$group2AdjustedPValue,
+        stats::p.adjust(differentialResults$group2PValue, method = "fdr")
+    )
+
+    differentialNetwork <- createDifferentialCorrelationNetwork(
+        differentialCorrelationTable = differentialResults,
+        differenceAdjustedPValueThreshold = 1,
+        minimumAbsoluteCorrelation = 0
+    )
+    rewiringTable <- calculateRewiringScores(differentialNetwork)
+    expect_equal(nrow(differentialNetwork), 26)
+    expect_equal(nrow(rewiringTable), 14)
+
+    subsetResults <- suppressWarnings(testDifferentialCorrelation(
+        analysisData = analysisData,
+        groupColumn = "clinicalGroup",
+        groupLevels = c("PASC", "Recovered"),
+        featureSubset = c("P1", "P2", "T1", "T2", "M1", "M2"),
+        minimumAbsoluteCorrelation = 0,
+        adjustedPValueThreshold = 1,
+        storeResult = FALSE
+    ))
+    expect_equal(nrow(subsetResults), 3)
+    expect_true(all(subsetResults$fromAssayName == subsetResults$toAssayName))
+
+    filteredAnalysis <- suppressWarnings(filterFeatures(
+        analysisData,
+        featureSubset = c("P1", "P2", "T1", "M1", "M2")
+    ))
+    filteredResults <- suppressWarnings(testDifferentialCorrelation(
+        analysisData = filteredAnalysis,
+        groupColumn = "clinicalGroup",
+        groupLevels = c("PASC", "Recovered"),
+        minimumAbsoluteCorrelation = 0,
+        adjustedPValueThreshold = 1,
+        storeResult = FALSE
+    ))
+    expect_equal(nrow(filteredResults), 2)
+    expect_false(any(filteredResults$fromAssayName == "transcript"))
+    expect_true(all(filteredResults$fromAssayName == filteredResults$toAssayName))
+})
+
 test_that("differential correlation handles empty subsets and supports spearman", {
     analysisData <- exampleAnalysisData()
 
@@ -278,6 +348,37 @@ test_that("all-pairs permutation validation returns conditional rankings", {
     expect_false("degreeMatchedScaledScore" %in% names(validationResult$permutationScores))
 })
 
+test_that("all-assay dense permutation validation stays within omics", {
+    expect_warning(
+        validationResult <- permuteRewiringScores(
+            analysisData = exampleAnalysisData(),
+            groupColumn = "clinicalGroup",
+            groupLevels = c("PASC", "Recovered"),
+            minimumAbsoluteCorrelation = 0,
+            adjustedPValueThreshold = 1,
+            differenceAdjustedPValueThreshold = 1,
+            nPermutations = 2,
+            seed = 1,
+            keepPermutationScores = TRUE
+        ),
+        "prespecified `candidateEdgeTable`"
+    )
+
+    expect_equal(nrow(validationResult$differentialCorrelationTable), 26)
+    expect_equal(nrow(validationResult$differentialCorrelationNetwork), 26)
+    expect_equal(nrow(validationResult$rewiringTable), 14)
+    expect_equal(nrow(validationResult$permutationScores), 28)
+    expect_true(all(
+        validationResult$differentialCorrelationTable$fromAssayName ==
+            validationResult$differentialCorrelationTable$toAssayName
+    ))
+    expect_true(all(
+        validationResult$differentialCorrelationNetwork$fromAssayName ==
+            validationResult$differentialCorrelationNetwork$toAssayName
+    ))
+    expect_identical(validationResult$inferenceStatus, "conditional ranking")
+})
+
 test_that("a complete fixed candidate universe supports randomization inference", {
     analysisData <- exampleAnalysisData()
     candidateEdge <- S4Vectors::DataFrame(
@@ -399,6 +500,161 @@ test_that("candidate selection and empty universes have explicit status", {
         "adjustedPermutationTailProbability",
         "inferenceStatus"
     ) %in% names(emptyResult$rewiringTable)))
+})
+
+test_that("permutation jobs retain every index in order", {
+    makeJobs <- getFromNamespace(".makePermutationJobs", "CorNetto")
+    labels <- as.list(seq_len(7L))
+    jobs <- makeJobs(
+        indices = seq_len(7L),
+        permutedLabels = labels,
+        nWorkers = 3L
+    )
+
+    expect_identical(
+        unlist(lapply(jobs, `[[`, "indices"), use.names = FALSE),
+        seq_len(7L)
+    )
+    expect_identical(
+        vapply(jobs, function(job) length(job$indices), integer(1L)),
+        c(2L, 2L, 3L)
+    )
+})
+
+test_that("parallel permutation scoring matches serial scoring", {
+    analysisData <- exampleAnalysisData()
+    candidateEdge <- S4Vectors::DataFrame(
+        fromFeatureIdentifier = "P1",
+        toFeatureIdentifier = "P2",
+        fromAssayName = "protein",
+        toAssayName = "protein",
+        check.names = FALSE
+    )
+    arguments <- list(
+        analysisData = analysisData,
+        groupColumn = "clinicalGroup",
+        groupLevels = c("PASC", "Recovered"),
+        candidateEdgeTable = candidateEdge,
+        minimumAbsoluteCorrelation = 0,
+        adjustedPValueThreshold = NULL,
+        nPermutations = 3L,
+        seed = 17L,
+        keepPermutationScores = TRUE,
+        progressEvery = 2L
+    )
+
+    set.seed(101)
+    rngBefore <- .Random.seed
+    serialResult <- do.call(
+        permuteRewiringScores,
+        c(arguments, list(BPPARAM = BiocParallel::SerialParam()))
+    )
+    expect_identical(.Random.seed, rngBefore)
+
+    snow <- BiocParallel::SnowParam(
+        workers = 2L,
+        type = "SOCK",
+        stop.on.error = TRUE,
+        progressbar = FALSE
+    )
+    parallelResult <- do.call(
+        permuteRewiringScores,
+        c(arguments, list(BPPARAM = snow))
+    )
+
+    expect_identical(parallelResult, serialResult)
+    expect_false(BiocParallel::bpisup(snow))
+})
+
+test_that("permutation progress is reported at the requested interval", {
+    candidateEdge <- S4Vectors::DataFrame(
+        fromFeatureIdentifier = "P1",
+        toFeatureIdentifier = "P2",
+        fromAssayName = "protein",
+        toAssayName = "protein",
+        check.names = FALSE
+    )
+
+    messages <- capture.output(
+        result <- suppressWarnings(permuteRewiringScores(
+            analysisData = exampleAnalysisData(),
+            groupColumn = "clinicalGroup",
+            groupLevels = c("PASC", "Recovered"),
+            candidateEdgeTable = candidateEdge,
+            minimumAbsoluteCorrelation = 0,
+            adjustedPValueThreshold = NULL,
+            nPermutations = 3L,
+            seed = 1L,
+            verbose = TRUE,
+            progressEvery = 2L
+        )),
+        type = "message"
+    )
+    expect_true(is.list(result))
+    messages <- paste(messages, collapse = "\n")
+
+    expect_match(messages, "Completed 2 of 3 permutations")
+    expect_match(messages, "Completed 3 of 3 permutations")
+})
+
+test_that("seed NULL advances the legacy label-permutation stream", {
+    analysisData <- exampleAnalysisData()
+    sampleData <- as.data.frame(MultiAssayExperiment::colData(analysisData))
+    permuteLabels <- getFromNamespace(".permuteGroupLabels", "CorNetto")
+    candidateEdge <- S4Vectors::DataFrame(
+        fromFeatureIdentifier = "P1",
+        toFeatureIdentifier = "P2",
+        fromAssayName = "protein",
+        toAssayName = "protein",
+        check.names = FALSE
+    )
+
+    set.seed(29)
+    invisible(lapply(seq_len(3L), function(i) {
+        permuteLabels(
+            sampleData = sampleData,
+            groupColumn = "clinicalGroup",
+            groupLevels = c("PASC", "Recovered")
+        )
+    }))
+    expectedState <- .Random.seed
+
+    set.seed(29)
+    suppressWarnings(permuteRewiringScores(
+        analysisData = analysisData,
+        groupColumn = "clinicalGroup",
+        groupLevels = c("PASC", "Recovered"),
+        candidateEdgeTable = candidateEdge,
+        minimumAbsoluteCorrelation = 0,
+        adjustedPValueThreshold = NULL,
+        nPermutations = 3L,
+        seed = NULL
+    ))
+
+    expect_identical(.Random.seed, expectedState)
+})
+
+test_that("permutation parallel arguments are validated", {
+    expect_error(
+        suppressWarnings(permuteRewiringScores(
+            analysisData = exampleAnalysisData(),
+            groupColumn = "clinicalGroup",
+            groupLevels = c("PASC", "Recovered"),
+            nPermutations = 1L,
+            BPPARAM = list()
+        )),
+        "BiocParallelParam"
+    )
+    expect_error(
+        suppressWarnings(permuteRewiringScores(
+            analysisData = exampleAnalysisData(),
+            groupColumn = "clinicalGroup",
+            groupLevels = c("PASC", "Recovered"),
+            nPermutations = 1L,
+            progressEvery = 0L
+        )),
+        "`progressEvery`"
+    )
 })
 
 test_that("weighted differential networks can be stored separately from raw results", {
