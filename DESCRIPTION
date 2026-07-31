@@ -1,6 +1,6 @@
 Package: CorNetto
 Title: Knowledge-Guided Multi-Omic Correlation Network Analysis
-Version: 0.99.5
+Version: 1.0
 Authors@R: c(
     person("Bradley", "Ward", role = c("aut", "cre"),
            email = "bradleyalexward@gmail.com"),
@@ -23,8 +23,9 @@ Authors@R: c(
 Description: Builds knowledge-guided multi-omic correlation networks from
     normalized transcriptomic, proteomic, and metabolomic abundance data.
     Group-specific correlation networks are compared with the Fisher
-    z-difference test, either across all pairs within an assay or across
-    candidate edges supplied by a prior-knowledge network, and the resulting
+    z-difference test, either across all within-omic pairs in one or every
+    assay without generating cross-omic pairs, or across candidate edges
+    supplied by a prior-knowledge network, and the resulting
     differential network is summarized into node-level rewiring scores that
     identify features whose interaction patterns change between groups.
     Rewiring scores can be compared with group-label permutation reference
