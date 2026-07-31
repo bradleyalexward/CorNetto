@@ -26,19 +26,13 @@ steps.
 
 ## Installation
 
-After acceptance to Bioconductor, install CorNetto with:
+Install CorNetto with:
 
 ```r
-if (!requireNamespace("BiocManager", quietly = TRUE)) {
-    install.packages("BiocManager")
-}
-BiocManager::install("CorNetto")
-```
-
-During review and development, install from GitHub with:
-
-```r
-BiocManager::install("bradleyalexward/CorNetto")
+remotes::install_github(
+    "bradleyalexward/CorNetto",
+    force = TRUE
+)
 ```
 
 ## Getting started
