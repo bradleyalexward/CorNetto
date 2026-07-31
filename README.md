@@ -49,16 +49,44 @@ library(CorNetto)
 analysisData <- exampleAnalysisData()
 knowledgeNetwork <- exampleKnowledgeNetwork()
 
+# With assayName omitted, every assay is tested densely within-omic.
+# Protein-protein and transcript-transcript pairs are included, for example,
+# but protein-transcript pairs are not generated.
 differentialResults <- testDifferentialCorrelation(
     analysisData,
     groupColumn = "clinicalGroup",
     groupLevels = c("Recovered", "PASC"),
-    assayName = "protein",
     storeResult = FALSE
 )
 
 differentialNetwork <- createDifferentialCorrelationNetwork(differentialResults)
 rewiringScores <- calculateRewiringScores(differentialNetwork)
+```
+
+Long permutation runs can use a BiocParallel backend. `SnowParam` is the
+portable choice on Windows:
+
+```r
+backend <- BiocParallel::SnowParam(
+    workers = 2,
+    type = "SOCK",
+    stop.on.error = TRUE,
+    progressbar = FALSE
+)
+
+rewiringValidation <- permuteRewiringScores(
+    analysisData,
+    candidateEdgeTable = knowledgeNetwork,
+    groupColumn = "clinicalGroup",
+    groupLevels = c("Recovered", "PASC"),
+    minimumAbsoluteCorrelation = 0,
+    adjustedPValueThreshold = NULL,
+    nPermutations = 999,
+    seed = 1,
+    verbose = TRUE,
+    progressEvery = 300,
+    BPPARAM = backend
+)
 ```
 
 See `vignette("CorNetto")` for the full workflow.
@@ -74,7 +102,7 @@ Kabamba B<sup>8,9</sup>, Pyr dit Ruys S<sup>1</sup>,
 Vertommen D<sup>10</sup>, Yombi JC<sup>5</sup>,
 Belkhir L<sup>2,5,\*</sup>, Elens L<sup>1,2,\*</sup> (2026).
 CorNetto: Knowledge-Guided Multi-Omic Correlation Network Analysis.
-R package version 0.99.4.
+R package version 1.0.
 https://github.com/bradleyalexward/CorNetto
 
 <sub>
@@ -104,7 +132,6 @@ https://github.com/bradleyalexward/CorNetto
 10. de Duve Institute and MASSPROT Platform, UCLouvain, Université Catholique
     de Louvain, Brussels, 1200, Belgium
 
-
 \* Joint senior authors. Correspondence: laure.elens@uclouvain.be (L.E.);
 leila.belkhir@saintluc.uclouvain.be (L.B.).
 </sub>
@@ -116,9 +143,6 @@ citation("CorNetto")
 ```
 
 A machine-readable citation is available in `CITATION.cff`.
-
-
-
 
 Differential correlation uses the Fisher z-difference test described in the
 function documentation; see `?testDifferentialCorrelation` for the method
