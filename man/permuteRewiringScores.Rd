@@ -40,15 +40,19 @@ groups.}
 labels. The first group is treated as the reference for gain or loss
 labels.}
 
-\item{assayName}{Assay name used when testing all within-omic pairs.}
+\item{assayName}{Optional assay name used when testing all within-omic
+pairs. When \code{NULL}, every assay is tested and the results are combined.
+Ignored when \code{candidateEdgeTable} is supplied.}
 
 \item{candidateEdgeTable}{Optional candidate edges to test. May be a
 standardized CorNetto edge table or a validated knowledge network.
 Candidate self-loops are omitted with a warning because a feature's
 correlation with itself is not an informative differential edge.}
 
-\item{featureSubset}{Optional feature subset used when \code{assayName} is
-supplied.}
+\item{featureSubset}{Optional feature subset. In all-assay mode, a vector
+is intersected with each assay, or a named list may supply a separate
+subset for each assay. Assays absent from a named list use all their
+features.}
 
 \item{correlationMethod}{Correlation method. Differential correlation
 currently supports \code{"pearson"} and \code{"spearman"}.}
@@ -119,7 +123,9 @@ and the updated \code{MultiAssayExperiment} is returned.
 \description{
 Permute group labels, rerun differential correlation testing, rebuild
 the differential network, and compare observed node scores with their
-permutation distributions.
+permutation distributions. When both \code{assayName} and \code{candidateEdgeTable}
+are \code{NULL}, every assay is tested densely within-omic; no cross-omic pairs
+are generated.
 }
 \details{
 Group labels are permuted and the differential-correlation
@@ -127,6 +133,13 @@ statistics are recomputed over a fixed edge universe. An
 edge can still be unscored in a permutation when a group has fewer than
 four pairwise-complete observations or a feature is constant, so realized
 node degree can fall in some permutations.
+
+Dense all-pairs mode follows \code{\link[=testDifferentialCorrelation]{testDifferentialCorrelation()}}: with
+\code{assayName = NULL}, feature pairs are generated separately within every
+assay and the assay-specific edge sets are combined for scoring. It never
+creates cross-omic pairs. The resulting observed network defines the
+combined within-omic edge universe reused throughout permutation
+validation.
 Tail probabilities use the Phipson and Smyth (2010) estimator,
 \code{(1 + r) / (1 + B_i)}, where \code{B_i} is the number of permutations that
 produced a score for the node. \code{contributingPermutations} reports \code{B_i}.
@@ -178,7 +191,6 @@ validation <- permuteRewiringScores(
     analysisData,
     groupColumn = "clinicalGroup",
     groupLevels = c("Recovered", "PASC"),
-    assayName = "protein",
     minimumAbsoluteCorrelation = 0,
     adjustedPValueThreshold = 1,
     pAdjustMethod = "fdr",
