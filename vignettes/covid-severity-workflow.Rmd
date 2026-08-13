@@ -56,7 +56,7 @@ optional but can be useful. The output is a standardized `S4Vectors::DataFrame`.
 
 `combineKnowledgeNetworks()` takes these standardized networks and combines their rows while removing duplicate edges (optional).
 
-```{r load prior data}
+```{r load-prior-data}
 
 # Set column mapping
 priorColumnMap <- c(
@@ -113,7 +113,7 @@ abundance or count matrix relating to proteomics, transcriptomics, or metabolomi
 
 `filterSamples()` filters the MultiAssayExperiment based on a group column and a range of values.
 
-```{r load experimental data}
+```{r load-experimental-data}
 # Import patient data
 patientInformation <- read.csv(file.path(extdataDir,
                                          "covidData",
@@ -297,7 +297,7 @@ directly unless `storeResult = TRUE`, in which case `analysisData` and
 Here the resulting network is not filtered further. In a real analysis,
 `minimumAbsoluteCorrelation` and `differenceAdjustedPValueThreshold` can
 be tightened to remove weakly correlated or non-significant edges.
-```{r}
+```{r createDifferentialCorrelationNetwork}
 analysisCovid <- createDifferentialCorrelationNetwork(
     differentialCorrelationTable = differentialSparseCorrelations,
     minimumAbsoluteCorrelation = 0,
@@ -346,7 +346,7 @@ ranking, not a randomization p-value. This vignette uses 99 Monte Carlo
 permutations so that package checks run quickly. Assignments are sampled
 independently and can repeat; exact enumeration is not implemented.
 
-```{r}
+```{r permuteRewiringScores}
 analysisCovid <- permuteRewiringScores(
     analysisData = analysisCovid,
     groupColumn = "Group",
@@ -393,7 +393,7 @@ imported into Cytoscape for further network analysis.
 directory. The vignette writes to `tempdir()` so package checks do not
 write into the user's working directory.
 
-```{r}
+```{r writeNetworkTables}
 cytoscapeTables <- prepareCytoscapeTables(networkEdgeTable = differentialSparseNetwork,
                                           rewiringTable = rankedRewiring)
 
