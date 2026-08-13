@@ -37,7 +37,7 @@ Description: Builds knowledge-guided multi-omic correlation networks from
 License: Artistic-2.0
 Encoding: UTF-8
 Depends:
-    R (>= 4.4.0)
+    R (>= 4.6.0)
 Imports:
     BiocParallel,
     graphics,
