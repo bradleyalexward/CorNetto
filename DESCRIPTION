@@ -1,6 +1,6 @@
 Package: CorNetto
 Title: Knowledge-Guided Multi-Omic Correlation Network Analysis
-Version: 1.0
+Version: 0.99.0
 Authors@R: c(
     person("Bradley", "Ward", role = c("aut", "cre"),
            email = "bradleyalexward@gmail.com"),

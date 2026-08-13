@@ -26,13 +26,19 @@ steps.
 
 ## Installation
 
-Install CorNetto with:
+CorNetto is under review for Bioconductor. Once accepted, install it with:
 
 ```r
-remotes::install_github(
-    "bradleyalexward/CorNetto",
-    force = TRUE
-)
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("CorNetto")
+```
+
+Until then, the development version can be installed from GitHub:
+
+```r
+BiocManager::install("bradleyalexward/CorNetto")
 ```
 
 ## Getting started
@@ -87,59 +93,14 @@ See `vignette("CorNetto")` for the full workflow.
 
 ## Citation
 
-If you use or build upon CorNetto, please cite:
-
-Ward B<sup>1,2</sup>, Gatto L<sup>3</sup>, Balligand J-L<sup>4</sup>,
-Bamps L<sup>5</sup>, Cani PD<sup>6</sup>, De Greef J<sup>2,5</sup>,
-Dewulf JP<sup>2,7,8</sup>, Haufroid V<sup>2,8</sup>,
-Kabamba B<sup>8,9</sup>, Pyr dit Ruys S<sup>1</sup>,
-Vertommen D<sup>10</sup>, Yombi JC<sup>5</sup>,
-Belkhir L<sup>2,5,\*</sup>, Elens L<sup>1,2,\*</sup> (2026).
-CorNetto: Knowledge-Guided Multi-Omic Correlation Network Analysis.
-R package version 1.0.
-https://github.com/bradleyalexward/CorNetto
-
-<sub>
-1. Integrated Pharmacometrics, Pharmacogenomics and Pharmacokinetics Group
-   (PMGK), Louvain Drug Research Institute (LDRI), UCLouvain, Université
-   Catholique de Louvain, Brussels, 1200, Belgium
-2. Louvain Center for Toxicology and Applied Pharmacology (LTAP), Institut de
-   Recherche Expérimentale et Clinique (IREC), UCLouvain, Université
-   Catholique de Louvain, Brussels, 1200, Belgium
-3. Computational Biology and Bioinformatics Unit (CBIO), de Duve Institute,
-   UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium
-4. WELBIO (Walloon Excellence in Life Sciences and Biotechnology), Pole of
-   Pharmacology and Therapeutics (FATH), Institut de Recherche Expérimentale
-   et Clinique (IREC), Cliniques Universitaires Saint-Luc, UCLouvain,
-   Université Catholique de Louvain, Brussels, 1200, Belgium
-5. Department of Internal Medicine, Cliniques Universitaires Saint-Luc,
-   UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium
-6. WELBIO, Metabolism and Nutrition Research Group, Louvain Drug Research
-   Institute (LDRI), UCLouvain, Université Catholique de Louvain, Brussels,
-   1200, Belgium
-7. Department of Biochemistry, de Duve Institute, UCLouvain, Université
-   Catholique de Louvain, Brussels, 1200, Belgium
-8. Department of Laboratory Medicine, Cliniques Universitaires Saint-Luc,
-   UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium
-9. Pôle de Microbiologie, Institut de Recherche Expérimentale et Clinique,
-   UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium
-10. de Duve Institute and MASSPROT Platform, UCLouvain, Université Catholique
-    de Louvain, Brussels, 1200, Belgium
-
-\* Joint senior authors. Correspondence: laure.elens@uclouvain.be (L.E.);
-leila.belkhir@saintluc.uclouvain.be (L.B.).
-</sub>
-
-You can also retrieve the package citation from R:
+If you use or build upon CorNetto, please cite it. The full author list,
+affiliations and a formatted reference are returned by:
 
 ```r
 citation("CorNetto")
 ```
 
-A machine-readable citation is available in `CITATION.cff`.
-
-
-
+A machine-readable citation is also available in `CITATION.cff`.
 
 ## License
 

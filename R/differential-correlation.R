@@ -463,9 +463,9 @@
 #' Test Differential Correlation Between Two Groups
 #'
 #' Compute differential correlation statistics for either all within-omic
-#' feature pairs in one assay or a supplied set of candidate edges.
-#' All-pairs testing evaluates every within-omic pair, while candidate-edge
-#' testing evaluates only the supplied edges.
+#' feature pairs or a supplied set of candidate edges. In all-pairs mode,
+#' omitting `assayName` tests every assay while keeping pairs within their
+#' assay; no cross-omic pairs are generated.
 #'
 #' @param analysisData A `MultiAssayExperiment`.
 #' @param groupColumn Sample metadata column used to define the two
@@ -473,13 +473,17 @@
 #' @param groupLevels A character vector of length two giving the group
 #'   labels. The first group is treated as the reference for gain or loss
 #'   labels.
-#' @param assayName Assay name used when testing all within-omic pairs.
+#' @param assayName Optional assay name used when testing all within-omic
+#'   pairs. When `NULL`, every assay is tested and the results are combined.
+#'   Ignored when `candidateEdgeTable` is supplied.
 #' @param candidateEdgeTable Optional candidate edges to test. May be a
 #'   standardized CorNetto edge table or a validated knowledge network.
 #'   Candidate self-loops are omitted with a warning because a feature's
 #'   correlation with itself is not an informative differential edge.
-#' @param featureSubset Optional feature subset used when `assayName` is
-#'   supplied.
+#' @param featureSubset Optional feature subset. In all-assay mode, a vector
+#'   is intersected with each assay, or a named list may supply a separate
+#'   subset for each assay. Assays absent from a named list use all their
+#'   features.
 #' @param correlationMethod Correlation method. Differential correlation
 #'   currently supports `"pearson"` and `"spearman"`.
 #' @param minimumAbsoluteCorrelation Minimum absolute correlation that
@@ -499,7 +503,9 @@
 #' @return A standardized edge `DataFrame` or an updated
 #'   `MultiAssayExperiment`.
 #' @details Within-group and differential p-values are adjusted over all
-#'   testable pairs before any correlation-strength filter is applied. Edges
+#'   testable pairs before any correlation-strength filter is applied. When
+#'   `assayName = NULL`, this is one combined multiple-testing family across
+#'   every within-omic pair from every assay. Edges
 #'   are then filtered to pairs with sufficient absolute correlation in at
 #'   least one group. When
 #'   `adjustedPValueThreshold` is not `NULL`, an edge is retained only if
@@ -573,7 +579,6 @@
 #'     analysisData,
 #'     groupColumn = "clinicalGroup",
 #'     groupLevels = c("Recovered", "PASC"),
-#'     assayName = "protein",
 #'     minimumAbsoluteCorrelation = 0,
 #'     adjustedPValueThreshold = 1,
 #'     pAdjustMethod = "fdr",

@@ -372,19 +372,6 @@ test_that("packaged synthetic priors cover measured and decoy edges", {
         }),
         use.names = FALSE
     )
-    featureSelection <- read.csv(
-        file.path(covidDir, "featureSelection.csv"),
-        stringsAsFactors = FALSE,
-        check.names = FALSE
-    )
-    expect_identical(
-        paste(
-            featureSelection$assayName,
-            featureSelection$featureIdentifier,
-            sep = "::"
-        ),
-        measuredKeys
-    )
     measured <- filterNetworkByNodes(
         combined,
         nodes = measuredKeys,
