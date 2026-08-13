@@ -1,6 +1,4 @@
 test_that("differential correlation and rewiring workflow returns expected columns", {
-    standardColumns <- getFromNamespace(".standardEdgeColumns", "CorNetto")()
-    getNodeTable <- getFromNamespace(".getStoredNodeTable", "CorNetto")
     analysisData <- exampleAnalysisData()
 
     differentialResults <- suppressWarnings(testDifferentialCorrelation(
@@ -34,7 +32,6 @@ test_that("differential correlation and rewiring workflow returns expected colum
         differentialCorrelationNetwork = differentialNetwork,
         storeResult = FALSE
     )
-    resolveRewiringPlotLabels <- getFromNamespace(".resolveRewiringPlotLabels", "CorNetto")
     expect_true(all(c(
         "nodeKey",
         "nodeIdentifier",
@@ -213,8 +210,6 @@ test_that("candidate-edge differential correlation drops self-loops", {
 })
 
 test_that("p-values are adjusted before correlation-strength filtering", {
-    finalizeResults <- getFromNamespace(".finalizeDifferentialCorrelationResults", "CorNetto")
-
     rawResults <- S4Vectors::DataFrame(
         fromFeatureIdentifier = c("A", "B", "C", "D"),
         toFeatureIdentifier = c("E", "F", "G", "H"),
@@ -260,7 +255,6 @@ test_that("p-values are adjusted before correlation-strength filtering", {
 })
 
 test_that("weighted networks default to rewiring-first signed z-score weights", {
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
     analysisData <- exampleAnalysisData()
     differentialResults <- coerceEdgeTable(data.frame(
         fromFeatureIdentifier = c("A", "B"),
@@ -503,7 +497,6 @@ test_that("candidate selection and empty universes have explicit status", {
 })
 
 test_that("permutation jobs retain every index in order", {
-    makeJobs <- getFromNamespace(".makePermutationJobs", "CorNetto")
     labels <- as.list(seq_len(7L))
     jobs <- makeJobs(
         indices = seq_len(7L),
@@ -600,7 +593,6 @@ test_that("permutation progress is reported at the requested interval", {
 test_that("seed NULL advances the legacy label-permutation stream", {
     analysisData <- exampleAnalysisData()
     sampleData <- as.data.frame(MultiAssayExperiment::colData(analysisData))
-    permuteLabels <- getFromNamespace(".permuteGroupLabels", "CorNetto")
     candidateEdge <- S4Vectors::DataFrame(
         fromFeatureIdentifier = "P1",
         toFeatureIdentifier = "P2",

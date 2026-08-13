@@ -265,8 +265,6 @@ test_that("sampleId metadata fallback and strict numeric assay parsing work", {
 })
 
 test_that("example knowledge network validates and can be combined", {
-    standardColumns <- getFromNamespace(".standardEdgeColumns", "CorNetto")()
-    getNodeTable <- getFromNamespace(".getStoredNodeTable", "CorNetto")
     knowledgeNetwork <- exampleKnowledgeNetwork()
     expect_true(methods::is(knowledgeNetwork, "DataFrame"))
     expect_true(all(standardColumns %in% names(knowledgeNetwork)))
@@ -447,7 +445,6 @@ test_that("analysis input rejects NaN and complex abundances", {
 })
 
 test_that("standard edge coercion preserves numeric factor values", {
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
     edge <- data.frame(
         fromFeatureIdentifier = "A",
         toFeatureIdentifier = "B",
@@ -464,7 +461,6 @@ test_that("standard edge coercion preserves numeric factor values", {
 })
 
 test_that("standard edge coercion preserves logical factor values", {
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
     edge <- data.frame(
         fromFeatureIdentifier = c("A", "B"),
         toFeatureIdentifier = c("B", "C"),

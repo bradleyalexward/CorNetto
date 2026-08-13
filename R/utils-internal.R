@@ -689,6 +689,29 @@
     analysisData
 }
 
+## Every public entry point ends the same way: hand the result back, or fold it
+## into the analysis object's result store. .storeCorNettoResults() already
+## rejects a non-MultiAssayExperiment through .initializeCorNettoStore(), so
+## callers do not need a separate .assertMultiAssayExperiment() first.
+.returnOrStore <- function(
+    resultObject,
+    analysisData,
+    slotName,
+    resultName,
+    storeResult
+) {
+    if (!storeResult) {
+        return(resultObject)
+    }
+
+    .storeCorNettoResults(
+        analysisData = analysisData,
+        slotName = slotName,
+        resultObject = resultObject,
+        resultName = resultName
+    )
+}
+
 .makeResultName <- function(..., separator = "__") {
     pieces <- unlist(list(...), use.names = FALSE)
     pieces <- pieces[!is.na(pieces) & nzchar(pieces)]

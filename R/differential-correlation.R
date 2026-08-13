@@ -624,21 +624,19 @@ testDifferentialCorrelation <- function(
         groupLevel = groupLevels[[2L]]
     )
 
+    if (is.null(resultName)) {
+        resultName <- .makeResultName(groupLevels[[1L]], "vs", groupLevels[[2L]], "raw", separator = "_")
+    }
+
+    ## An explicitly empty featureSubset asks for a test over no pairs, which is
+    ## an empty edge table rather than an error.
     if (is.null(candidateEdgeTable) && !is.null(featureSubset) && !length(featureSubset)) {
-        rawResults <- .emptyStandardEdgeTable()
-        if (!storeResult) {
-            return(rawResults)
-        }
-
-        if (is.null(resultName)) {
-            resultName <- .makeResultName(groupLevels[[1L]], "vs", groupLevels[[2L]], "raw", separator = "_")
-        }
-
-        return(.storeCorNettoResults(
+        return(.returnOrStore(
+            resultObject = .emptyStandardEdgeTable(),
             analysisData = analysisData,
             slotName = "differentialCorrelationResults",
-            resultObject = rawResults,
-            resultName = resultName
+            resultName = resultName,
+            storeResult = storeResult
         ))
     }
 
@@ -737,19 +735,12 @@ testDifferentialCorrelation <- function(
         correlationMethod = correlationMethod
     )
 
-    if (!storeResult) {
-        return(rawResults)
-    }
-
-    if (is.null(resultName)) {
-        resultName <- .makeResultName(groupLevels[[1L]], "vs", groupLevels[[2L]], "raw", separator = "_")
-    }
-
-    .storeCorNettoResults(
+    .returnOrStore(
+        resultObject = rawResults,
         analysisData = analysisData,
         slotName = "differentialCorrelationResults",
-        resultObject = rawResults,
-        resultName = resultName
+        resultName = resultName,
+        storeResult = storeResult
     )
 }
 
@@ -833,17 +824,18 @@ createDifferentialCorrelationNetwork <- function(
     .assertScalarLogical(storeResult, "storeResult")
     differentialCorrelationTable <- .coerceStandardEdgeTable(differentialCorrelationTable)
 
+    storeNetwork <- function(edgeTable) {
+        .returnOrStore(
+            resultObject = edgeTable,
+            analysisData = analysisData,
+            slotName = "differentialCorrelationNetworks",
+            resultName = resultName,
+            storeResult = storeResult
+        )
+    }
+
     if (!nrow(differentialCorrelationTable)) {
-        if (!storeResult) {
-            return(differentialCorrelationTable)
-        }
-        .assertMultiAssayExperiment(analysisData)
-        return(.storeCorNettoResults(
-            analysisData,
-            "differentialCorrelationNetworks",
-            differentialCorrelationTable,
-            resultName
-        ))
+        return(storeNetwork(differentialCorrelationTable))
     }
 
     edgeData <- .asPlainDataFrame(differentialCorrelationTable)
@@ -852,17 +844,7 @@ createDifferentialCorrelationNetwork <- function(
             edgeData$adjustedPValue <= differenceAdjustedPValueThreshold
         edgeData <- edgeData[keepIndex, , drop = FALSE]
         if (!nrow(edgeData)) {
-            edgeTable <- .emptyStandardEdgeTable()
-            if (!storeResult) {
-                return(edgeTable)
-            }
-            .assertMultiAssayExperiment(analysisData)
-            return(.storeCorNettoResults(
-                analysisData = analysisData,
-                slotName = "differentialCorrelationNetworks",
-                resultObject = edgeTable,
-                resultName = resultName
-            ))
+            return(storeNetwork(.emptyStandardEdgeTable()))
         }
     }
 
@@ -887,18 +869,7 @@ createDifferentialCorrelationNetwork <- function(
     edgeData$edgeType <- "differentialCorrelation"
     edgeData$sourceType <- "differentialCorrelation"
     edgeData$isDirected <- FALSE
-    edgeTable <- .coerceStandardEdgeTable(edgeData)
-    if (!storeResult) {
-        return(edgeTable)
-    }
-
-    .assertMultiAssayExperiment(analysisData)
-    .storeCorNettoResults(
-        analysisData = analysisData,
-        slotName = "differentialCorrelationNetworks",
-        resultObject = edgeTable,
-        resultName = resultName
-    )
+    storeNetwork(.coerceStandardEdgeTable(edgeData))
 }
 
 .computeDegreeMatchedScores <- function(rawRewiringScore, totalConnections,
@@ -1041,12 +1012,13 @@ calculateRewiringScores <- function(
             degreeMatchedZScore = numeric(),
             check.names = FALSE
         )
-        if (!storeResult) {
-            return(rewiringTable)
-        }
-
-        .assertMultiAssayExperiment(analysisData)
-        return(.storeCorNettoResults(analysisData, "rewiringResults", rewiringTable, resultName))
+        return(.returnOrStore(
+            resultObject = rewiringTable,
+            analysisData = analysisData,
+            slotName = "rewiringResults",
+            resultName = resultName,
+            storeResult = storeResult
+        ))
     }
 
     edgeData <- .asPlainDataFrame(differentialCorrelationNetwork)
@@ -1114,15 +1086,11 @@ calculateRewiringScores <- function(
     rewiringTable$degreeMatchedZScore <- as.numeric(degreeMatched$degreeMatchedZScore)
     rewiringTable <- S4Vectors::DataFrame(rewiringTable, check.names = FALSE)
 
-    if (!storeResult) {
-        return(rewiringTable)
-    }
-
-    .assertMultiAssayExperiment(analysisData)
-    .storeCorNettoResults(
+    .returnOrStore(
+        resultObject = rewiringTable,
         analysisData = analysisData,
         slotName = "rewiringResults",
-        resultObject = rewiringTable,
-        resultName = resultName
+        resultName = resultName,
+        storeResult = storeResult
     )
 }

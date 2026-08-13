@@ -363,26 +363,24 @@ createCorrelationNetwork <- function(
         sampleIds = sampleIds
     )
 
+    if (is.null(groupLevel)) {
+        groupLabel <- .makeResultName(assayName, "customSamples")
+    } else {
+        groupLabel <- groupLevel
+    }
+    if (is.null(resultName)) {
+        resultName <- .makeResultName(assayName, groupLabel, correlationMethod)
+    }
+
+    ## An explicitly empty featureSubset asks for a network over no features,
+    ## which is an empty edge table rather than an error.
     if (!is.null(featureSubset) && !length(featureSubset)) {
-        edgeTable <- .emptyStandardEdgeTable()
-        if (!storeResult) {
-            return(edgeTable)
-        }
-
-        if (is.null(groupLevel)) {
-            groupLabel <- .makeResultName(assayName, "customSamples")
-        } else {
-            groupLabel <- groupLevel
-        }
-        if (is.null(resultName)) {
-            resultName <- .makeResultName(assayName, groupLabel, correlationMethod)
-        }
-
-        return(.storeCorNettoResults(
+        return(.returnOrStore(
+            resultObject = .emptyStandardEdgeTable(),
             analysisData = analysisData,
             slotName = "correlationResults",
-            resultObject = edgeTable,
-            resultName = resultName
+            resultName = resultName,
+            storeResult = storeResult
         ))
     }
 
@@ -408,12 +406,6 @@ createCorrelationNetwork <- function(
         correlationMethod = correlationMethod
     )
 
-    if (is.null(groupLevel)) {
-        groupLabel <- .makeResultName(assayName, "customSamples")
-    } else {
-        groupLabel <- groupLevel
-    }
-
     edgeTable <- .reshapeCorrelationMatrixToEdges(
         correlationMatrix = correlationResult$correlationMatrix,
         pValueMatrix = correlationResult$pValueMatrix,
@@ -429,18 +421,11 @@ createCorrelationNetwork <- function(
         pAdjustMethod = pAdjustMethod
     )
 
-    if (!storeResult) {
-        return(edgeTable)
-    }
-
-    if (is.null(resultName)) {
-        resultName <- .makeResultName(assayName, groupLabel, correlationMethod)
-    }
-
-    .storeCorNettoResults(
+    .returnOrStore(
+        resultObject = edgeTable,
         analysisData = analysisData,
         slotName = "correlationResults",
-        resultObject = edgeTable,
-        resultName = resultName
+        resultName = resultName,
+        storeResult = storeResult
     )
 }

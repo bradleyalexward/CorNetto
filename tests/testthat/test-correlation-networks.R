@@ -1,6 +1,4 @@
 test_that("dense correlation networks support all descriptive methods", {
-    standardColumns <- getFromNamespace(".standardEdgeColumns", "CorNetto")()
-    getNodeTable <- getFromNamespace(".getStoredNodeTable", "CorNetto")
     analysisData <- exampleAnalysisData()
 
     pearsonNetwork <- suppressWarnings(createCorrelationNetwork(
@@ -48,8 +46,6 @@ test_that("dense correlation networks support all descriptive methods", {
 })
 
 test_that("combineNetworks can merge group-specific correlation outputs", {
-    standardColumns <- getFromNamespace(".standardEdgeColumns", "CorNetto")()
-    getNodeTable <- getFromNamespace(".getStoredNodeTable", "CorNetto")
     analysisData <- exampleAnalysisData()
 
     recovered <- suppressWarnings(createCorrelationNetwork(

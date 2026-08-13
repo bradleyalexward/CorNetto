@@ -155,26 +155,17 @@ validateKnowledgeNetwork <- function(
         )
     }
 
-    if (!storeResult) {
-        if (!isTRUE(quiet)) {
-            message(
-                "Knowledge network is structured correctly for CorNetto."
-            )
-        }
-        return(standardizedNetwork)
-    }
-
-    .assertMultiAssayExperiment(analysisData)
-    analysisData <- .storeCorNettoResults(
-        analysisData = analysisData,
-        slotName = "knowledgeNetworks",
-        resultObject = standardizedNetwork,
-        resultName = resultName
-    )
     if (!isTRUE(quiet)) {
         message("Knowledge network is structured correctly for CorNetto.")
     }
-    analysisData
+
+    .returnOrStore(
+        resultObject = standardizedNetwork,
+        analysisData = analysisData,
+        slotName = "knowledgeNetworks",
+        resultName = resultName,
+        storeResult = storeResult
+    )
 }
 
 #' Summarize a Knowledge Network
@@ -475,15 +466,12 @@ combineKnowledgeNetworks <- function(
     }
 
     combinedNetwork <- .coerceStandardEdgeTable(combinedNetwork, nodeTable = combinedNodeTable)
-    if (!storeResult) {
-        return(combinedNetwork)
-    }
 
-    .assertMultiAssayExperiment(analysisData)
-    .storeCorNettoResults(
+    .returnOrStore(
+        resultObject = combinedNetwork,
         analysisData = analysisData,
         slotName = "knowledgeNetworks",
-        resultObject = combinedNetwork,
-        resultName = resultName
+        resultName = resultName,
+        storeResult = storeResult
     )
 }

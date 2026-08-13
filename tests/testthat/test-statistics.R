@@ -3,8 +3,6 @@
 ## would actually catch a wrong statistic, as opposed to a wrong column name.
 
 test_that("dense pearson correlations and p-values match stats::cor.test", {
-    computePearson <- getFromNamespace(".computePearsonCorrelations", "CorNetto")
-
     set.seed(42)
     m <- matrix(
         rnorm(60),
@@ -24,8 +22,6 @@ test_that("dense pearson correlations and p-values match stats::cor.test", {
 })
 
 test_that("dense pearson p-values match cor.test under pairwise missingness", {
-    computePearson <- getFromNamespace(".computePearsonCorrelations", "CorNetto")
-
     set.seed(7)
     m <- matrix(
         rnorm(60),
@@ -44,7 +40,6 @@ test_that("dense pearson p-values match cor.test under pairwise missingness", {
 })
 
 test_that("perfect pearson correlations match cor.test", {
-    computePearson <- getFromNamespace(".computePearsonCorrelations", "CorNetto")
     m <- rbind(
         increasing = 1:6,
         same = 2 * (1:6),
@@ -62,8 +57,6 @@ test_that("perfect pearson correlations match cor.test", {
 })
 
 test_that("spearman correlations match cor.test with the normal approximation", {
-    computePairwise <- getFromNamespace(".computeCorrelationByPairwiseTests", "CorNetto")
-
     set.seed(11)
     m <- matrix(
         rnorm(45),
@@ -80,8 +73,6 @@ test_that("spearman correlations match cor.test with the normal approximation", 
 })
 
 test_that("kendall correlations match cor.test with the normal approximation", {
-    computePairwise <- getFromNamespace(".computeCorrelationByPairwiseTests", "CorNetto")
-
     set.seed(13)
     m <- matrix(
         rnorm(45),
@@ -98,8 +89,6 @@ test_that("kendall correlations match cor.test with the normal approximation", {
 })
 
 test_that("the z-score difference is the Fisher z difference from the literature", {
-    fisherDifference <- getFromNamespace(".fisherCorrelationDifference", "CorNetto")
-
     # Fisher (1921). Group 1 is subtracted from group 2, so a positive
     # z means the correlation is stronger in group 2. See the sign-convention
     # test below, which is what pins this down.
@@ -114,8 +103,6 @@ test_that("the z-score difference is the Fisher z difference from the literature
 })
 
 test_that("zScoreDifference is positive when group 2 is more correlated", {
-    fisherDifference <- getFromNamespace(".fisherCorrelationDifference", "CorNetto")
-
     # The sign convention is load-bearing: edgeWeightMethod = "signedZScore"
     # exposes it directly as the edge weight, while the edgeDirection labels
     # ("gainInGroup1") are group-1 centric. Pin the direction here.
@@ -128,8 +115,6 @@ test_that("zScoreDifference is positive when group 2 is more correlated", {
 })
 
 test_that("the spearman z difference carries the Fieller variance inflation", {
-    fisherDifference <- getFromNamespace(".fisherCorrelationDifference", "CorNetto")
-
     # Fieller, Hartley and Pearson (1957) doi:10.1093/biomet/44.3-4.470
     expected <- (atanh(0.2) - atanh(0.8)) / sqrt(1.06 / (20 - 3) + 1.06 / (20 - 3))
     observed <- fisherDifference(0.8, 20, 0.2, 20, "spearman")
@@ -138,8 +123,6 @@ test_that("the spearman z difference carries the Fieller variance inflation", {
 })
 
 test_that("unequal group sizes enter the z difference asymmetrically", {
-    fisherDifference <- getFromNamespace(".fisherCorrelationDifference", "CorNetto")
-
     expected <- (atanh(0.1) - atanh(0.9)) / sqrt(1 / (12 - 3) + 1 / (30 - 3))
     observed <- fisherDifference(0.9, 12, 0.1, 30, "pearson")
 
@@ -233,7 +216,6 @@ test_that("dense differential correlation uses pairwise sample counts", {
 
 test_that("permutation tail probabilities follow Phipson and Smyth", {
     # (1 + r) / (1 + B); doi:10.2202/1544-6115.1585
-    tailProbability <- getFromNamespace(".permutationTailProbability", "CorNetto")
 
     nullValues <- c(1, 2, 3, 4, 5)
     expect_equal(tailProbability(3, nullValues, "greater"), (1 + 3) / (1 + 5))
@@ -252,8 +234,6 @@ test_that("permutation tail probabilities follow Phipson and Smyth", {
 })
 
 test_that("rewiring scores are the incident-edge L2 norm", {
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
-
     # A star: N1 carries three edges with z = 3, 4, 12.
     network <- coerceEdgeTable(data.frame(
         fromFeatureIdentifier = c("N1", "N1", "N1"),
@@ -283,7 +263,6 @@ test_that("rewiring scores are the incident-edge L2 norm", {
 })
 
 test_that("rewiring scores reject missing and non-finite weights", {
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
     baseEdge <- data.frame(
         fromFeatureIdentifier = "A",
         toFeatureIdentifier = "B",
@@ -307,8 +286,6 @@ test_that("rewiring scores reject missing and non-finite weights", {
 })
 
 test_that("degree-matched z-scores are NA for bins that cannot support them", {
-    computeDegreeMatched <- getFromNamespace(".computeDegreeMatchedScores", "CorNetto")
-
     # Six nodes at the same degree: a real spread, so a real z.
     scored <- computeDegreeMatched(
         rawRewiringScore = c(1, 2, 3, 4, 5, 6),
@@ -368,8 +345,6 @@ test_that("pairs with fewer than three shared samples do not become NA edges", {
 })
 
 test_that("a feature constant within one group does not crash classification", {
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
-
     differentialResults <- coerceEdgeTable(data.frame(
         fromFeatureIdentifier = c("A", "B"),
         toFeatureIdentifier = c("C", "D"),

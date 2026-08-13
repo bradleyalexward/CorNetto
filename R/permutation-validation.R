@@ -726,13 +726,15 @@ permuteRewiringScores <- function(
         }
     )
 
-    if (!storeResult) {
-        return(result)
-    }
-
     if (is.null(resultName)) {
         resultName <- .makeResultName(groupLevels[[1L]], "vs", groupLevels[[2L]], "rewiringPermutation", separator = "_")
     }
 
-    .storeCorNettoResults(analysisData, "validationResults", result, resultName)
+    .returnOrStore(
+        resultObject = result,
+        analysisData = analysisData,
+        slotName = "validationResults",
+        resultName = resultName,
+        storeResult = storeResult
+    )
 }

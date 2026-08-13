@@ -1,8 +1,4 @@
 test_that("integrated network and neighborhood workflow are available", {
-    standardColumns <- getFromNamespace(".standardEdgeColumns", "CorNetto")()
-    getNodeTable <- getFromNamespace(".getStoredNodeTable", "CorNetto")
-    setNodeTable <- getFromNamespace(".setStoredNodeTable", "CorNetto")
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
     analysisData <- exampleAnalysisData()
     knowledgeNetwork <- exampleKnowledgeNetwork()
 
@@ -147,9 +143,6 @@ test_that("integrated network and neighborhood workflow are available", {
 })
 
 test_that("mirroring undirected edges is idempotent", {
-    duplicateUndirected <- getFromNamespace(".duplicateUndirectedEdges", "CorNetto")
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
-
     network <- coerceEdgeTable(data.frame(
         fromFeatureIdentifier = c("A", "B"),
         toFeatureIdentifier = c("B", "C"),
@@ -173,8 +166,6 @@ test_that("mirroring undirected edges is idempotent", {
 })
 
 test_that("undirected edges stay symmetric in a mixed directed graph", {
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
-
     # igraph cannot mix directed and undirected edges, so A-B must be reachable
     # from B even though the graph is directed by C->D.
     network <- coerceEdgeTable(data.frame(
@@ -207,8 +198,6 @@ test_that("undirected edges stay symmetric in a mixed directed graph", {
 })
 
 test_that("calculateRewiringScores rejects a mirrored network", {
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
-
     network <- coerceEdgeTable(data.frame(
         fromFeatureIdentifier = c("A", "B"),
         toFeatureIdentifier = c("B", "C"),
@@ -246,8 +235,6 @@ test_that("base data-frame edge tables are not split into columns", {
 })
 
 test_that("node keys reject ambiguous separator-containing components", {
-    nodeKey <- getFromNamespace(".nodeKey", "CorNetto")
-
     expect_error(nodeKey("rna::gene", "TP53"), "cannot contain")
     expect_error(nodeKey("rna", "gene::TP53"), "cannot contain")
 })

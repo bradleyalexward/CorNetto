@@ -231,16 +231,12 @@ combineNetworks <- function(
         integratedEdgeTable <- .duplicateUndirectedEdges(integratedEdgeTable)
     }
 
-    if (!storeResult) {
-        return(integratedEdgeTable)
-    }
-
-    .assertMultiAssayExperiment(analysisData)
-    .storeCorNettoResults(
+    .returnOrStore(
+        resultObject = integratedEdgeTable,
         analysisData = analysisData,
         slotName = "integratedNetworks",
-        resultObject = integratedEdgeTable,
-        resultName = resultName
+        resultName = resultName,
+        storeResult = storeResult
     )
 }
 
