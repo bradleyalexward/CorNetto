@@ -1,8 +1,20 @@
-## Build the synthetic candidate-edge files used by the COVID vignette.
+## Build the synthetic candidate-edge files in inst/extdata/priorNetworks,
+## used by the COVID vignette and the package tests.
 ##
 ## The edges are generated from feature identifiers in the packaged matrices.
 ## They are arbitrary software examples, not biological assertions and not
-## extracts from external interaction databases. No random numbers are used.
+## extracts from external interaction databases. They must not be interpreted
+## as biological evidence. No random numbers are used, so re-running this
+## script from the package source tree reproduces all three files exactly.
+## The files were created for CorNetto and are distributed under the package's
+## Artistic-2.0 license.
+##
+## synthetic_within_assay.csv  undirected within-assay edges.
+## synthetic_cross_assay.csv   directed cross-assay edges; the direction is
+##                             illustrative, not causal.
+## synthetic_decoy_edges.csv   edges with endpoints intentionally absent from
+##                             the packaged assays, so the filtering step in
+##                             the COVID vignette has observable work to do.
 
 scriptArg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
 scriptPath <- if (length(scriptArg)) {

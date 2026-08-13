@@ -1,8 +1,4 @@
 test_that("integrated network and neighborhood workflow are available", {
-    standardColumns <- getFromNamespace(".standardEdgeColumns", "CorNetto")()
-    getNodeTable <- getFromNamespace(".getStoredNodeTable", "CorNetto")
-    setNodeTable <- getFromNamespace(".setStoredNodeTable", "CorNetto")
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
     analysisData <- exampleAnalysisData()
     knowledgeNetwork <- exampleKnowledgeNetwork()
 
@@ -147,9 +143,6 @@ test_that("integrated network and neighborhood workflow are available", {
 })
 
 test_that("mirroring undirected edges is idempotent", {
-    duplicateUndirected <- getFromNamespace(".duplicateUndirectedEdges", "CorNetto")
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
-
     network <- coerceEdgeTable(data.frame(
         fromFeatureIdentifier = c("A", "B"),
         toFeatureIdentifier = c("B", "C"),
@@ -173,8 +166,6 @@ test_that("mirroring undirected edges is idempotent", {
 })
 
 test_that("undirected edges stay symmetric in a mixed directed graph", {
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
-
     # igraph cannot mix directed and undirected edges, so A-B must be reachable
     # from B even though the graph is directed by C->D.
     network <- coerceEdgeTable(data.frame(
@@ -207,8 +198,6 @@ test_that("undirected edges stay symmetric in a mixed directed graph", {
 })
 
 test_that("calculateRewiringScores rejects a mirrored network", {
-    coerceEdgeTable <- getFromNamespace(".coerceStandardEdgeTable", "CorNetto")
-
     network <- coerceEdgeTable(data.frame(
         fromFeatureIdentifier = c("A", "B"),
         toFeatureIdentifier = c("B", "C"),
@@ -246,8 +235,6 @@ test_that("base data-frame edge tables are not split into columns", {
 })
 
 test_that("node keys reject ambiguous separator-containing components", {
-    nodeKey <- getFromNamespace(".nodeKey", "CorNetto")
-
     expect_error(nodeKey("rna::gene", "TP53"), "cannot contain")
     expect_error(nodeKey("rna", "gene::TP53"), "cannot contain")
 })
@@ -312,4 +299,34 @@ test_that("rewiring plots put small permutation tails first", {
     )
 
     expect_identical(as.character(plotted$nodeKey), c("protein::P2", "protein::P3"))
+})
+
+test_that("written network tables round-trip in both formats", {
+    networkTables <- prepareCytoscapeTables(exampleKnowledgeNetwork())
+
+    for (fileFormat in c("tsv", "csv")) {
+        outputDir <- file.path(tempdir(), paste0("cornetto-roundtrip-", fileFormat))
+        writtenFiles <- writeNetworkTables(
+            networkTables,
+            directoryPath = outputDir,
+            fileFormat = fileFormat
+        )
+        expect_true(all(file.exists(writtenFiles)))
+
+        reread <- utils::read.delim(
+            writtenFiles[["edges"]],
+            sep = if (identical(fileFormat, "csv")) "," else "\t",
+            na.strings = c("NA", ""),
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+        )
+        expect_identical(names(reread), names(as.data.frame(networkTables$edges)))
+        expect_identical(nrow(reread), nrow(networkTables$edges))
+        expect_identical(
+            reread$fromFeatureIdentifier,
+            as.character(networkTables$edges$fromFeatureIdentifier)
+        )
+        ## Empty cells, not the literal "NA", so Cytoscape reads them as missing.
+        expect_true(all(is.na(reread$correlationValue)))
+    }
 })

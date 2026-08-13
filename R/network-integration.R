@@ -124,15 +124,7 @@
         return(NULL)
     }
 
-    switch(
-        EXPR = slotName,
-        knowledgeNetworks = knowledgeNetworks(analysisData),
-        correlationResults = correlationResults(analysisData),
-        differentialCorrelationResults = differentialCorrelationResults(analysisData),
-        differentialCorrelationNetworks = differentialCorrelationNetworks(analysisData),
-        integratedNetworks = integratedNetworks(analysisData),
-        NULL
-    )
+    getCorNettoResult(analysisData, slotName)
 }
 
 #' Combine Network Edge Tables
@@ -239,16 +231,12 @@ combineNetworks <- function(
         integratedEdgeTable <- .duplicateUndirectedEdges(integratedEdgeTable)
     }
 
-    if (!storeResult) {
-        return(integratedEdgeTable)
-    }
-
-    .assertMultiAssayExperiment(analysisData)
-    .storeCorNettoResults(
+    .returnOrStore(
+        resultObject = integratedEdgeTable,
         analysisData = analysisData,
         slotName = "integratedNetworks",
-        resultObject = integratedEdgeTable,
-        resultName = resultName
+        resultName = resultName,
+        storeResult = storeResult
     )
 }
 

@@ -6,7 +6,7 @@ output:
   BiocStyle::html_document:
     toc: true
 vignette: >
-  %\VignetteIndexEntry{CorNetto COVID Severity Workflow}
+  %\VignetteIndexEntry{2. CorNetto COVID-19 Severity Workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -19,48 +19,21 @@ extdataDir <- system.file("extdata", package = "CorNetto")
 
 # Introduction
 
-CorNetto builds knowledge-guided multi-omic correlation networks from
-normalized assay data stored in a `MultiAssayExperiment`. It is intended
-for workflows where transcriptomic, proteomic, metabolomic, or related
-assays are already normalized and the analysis question is whether groups
-differ in correlation structure, prior-supported connectivity, or
-node-level rewiring.
+This vignette is an applied companion to `vignette("CorNetto")`, which
+introduces the package, motivates it against related Bioconductor software,
+and covers installation and the full function reference. Read that one first.
 
-The package uses standard Bioconductor containers for assay and sample
-metadata, and returns standardized edge tables that can be combined,
-converted to `igraph` objects, or exported as Cytoscape-ready node and
-edge tables.
-
-This vignette uses a small packaged subset of proteomic, transcriptomic,
-and metabolomic data from moderate and severe COVID-19 patients. The subset
-is intended to demonstrate the workflow during package checks; it is not
-sized for biological discovery. The candidate edges used below are entirely
-synthetic. They demonstrate network import, filtering, differential
-correlation, and node scoring, but they do not represent biological evidence.
+Here the same workflow is run end to end on a small packaged subset of
+proteomic, transcriptomic, and metabolomic data from moderate and severe
+COVID-19 patients. The subset exists to demonstrate the workflow during
+package checks; it is not sized for biological discovery, and its provenance
+is documented in `inst/scripts/covid-example-data.md`. The candidate edges
+used below are entirely synthetic. They exercise network import, filtering,
+differential correlation, and node scoring, but they do not represent
+biological evidence.
 
 Constraining the calculations to an explicit candidate network keeps this
 example fast and avoids dense all-pairs correlations.
-
-# Version information
-
-```{r version-information}
-c(
-    R = R.version.string,
-    Bioconductor = as.character(BiocManager::version()),
-    CorNetto = as.character(utils::packageVersion("CorNetto"))
-)
-```
-
-# Installation
-
-After acceptance to Bioconductor, install CorNetto with:
-
-```{r install, eval = FALSE}
-if (!requireNamespace("BiocManager", quietly = TRUE)) {
-    install.packages("BiocManager")
-}
-BiocManager::install("CorNetto")
-```
 
 # Import synthetic candidate networks
 

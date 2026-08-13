@@ -155,26 +155,17 @@ validateKnowledgeNetwork <- function(
         )
     }
 
-    if (!storeResult) {
-        if (!isTRUE(quiet)) {
-            message(
-                "Knowledge network is structured correctly for CorNetto."
-            )
-        }
-        return(standardizedNetwork)
-    }
-
-    .assertMultiAssayExperiment(analysisData)
-    analysisData <- .storeCorNettoResults(
-        analysisData = analysisData,
-        slotName = "knowledgeNetworks",
-        resultObject = standardizedNetwork,
-        resultName = resultName
-    )
     if (!isTRUE(quiet)) {
         message("Knowledge network is structured correctly for CorNetto.")
     }
-    analysisData
+
+    .returnOrStore(
+        resultObject = standardizedNetwork,
+        analysisData = analysisData,
+        slotName = "knowledgeNetworks",
+        resultName = resultName,
+        storeResult = storeResult
+    )
 }
 
 #' Summarize a Knowledge Network
@@ -388,12 +379,15 @@ readKnowledgeNetwork <- function(
     }
 
     delimiter <- .matchDelimiter(filePath, delimiter)
-    knowledgeNetwork <- readr::read_delim(
-      file = filePath,
-      delim = delimiter,
-      show_col_types = FALSE,
-      progress = FALSE,
-      name_repair = "minimal"
+    ## Blank cells are read as NA so that a supplied-but-empty column falls back
+    ## to the same default as an absent one in .standardizeKnowledgeNetwork().
+    knowledgeNetwork <- utils::read.delim(
+        file = filePath,
+        sep = delimiter,
+        na.strings = c("NA", ""),
+        stringsAsFactors = FALSE,
+        check.names = FALSE,
+        encoding = "UTF-8"
     )
     knowledgeNetwork <- .asPlainDataFrame(knowledgeNetwork)
 
@@ -472,15 +466,12 @@ combineKnowledgeNetworks <- function(
     }
 
     combinedNetwork <- .coerceStandardEdgeTable(combinedNetwork, nodeTable = combinedNodeTable)
-    if (!storeResult) {
-        return(combinedNetwork)
-    }
 
-    .assertMultiAssayExperiment(analysisData)
-    .storeCorNettoResults(
+    .returnOrStore(
+        resultObject = combinedNetwork,
         analysisData = analysisData,
         slotName = "knowledgeNetworks",
-        resultObject = combinedNetwork,
-        resultName = resultName
+        resultName = resultName,
+        storeResult = storeResult
     )
 }

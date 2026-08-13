@@ -1,7 +1,3 @@
-.validatePermutationCount <- function(nPermutations) {
-    .assertWholeNumber(nPermutations, "nPermutations", minimum = 1L)
-}
-
 .permutationTailProbability <- function(observedValue, nullValues, alternative) {
     nullValues <- as.numeric(nullValues)
     nullValues <- nullValues[!is.na(nullValues)]
@@ -133,17 +129,6 @@
     rownames(sampleData) <- rownames(MultiAssayExperiment::colData(analysisData))
     MultiAssayExperiment::colData(analysisData) <- sampleData
     analysisData
-}
-
-.emptyPermutationScoreTable <- function() {
-    S4Vectors::DataFrame(
-        nodeKey = character(),
-        permutation = integer(),
-        rawRewiringScore = numeric(),
-        rootMeanSquareRewiringScore = numeric(),
-        degreeMatchedZScore = numeric(),
-        check.names = FALSE
-    )
 }
 
 .scoreSingleDifferentialRewiring <- function(
@@ -437,7 +422,7 @@ permuteRewiringScores <- function(
     correlationMethod <- match.arg(correlationMethod)
     edgeWeightMethod <- match.arg(edgeWeightMethod)
     .assertScalarCharacter(scoreColumn, "scoreColumn")
-    nPermutations <- .validatePermutationCount(nPermutations)
+    nPermutations <- .assertWholeNumber(nPermutations, "nPermutations", minimum = 1L)
     groupLevels <- .assertTwoGroupLevels(groupLevels)
     minimumAbsoluteCorrelation <- .validateUnitInterval(
         minimumAbsoluteCorrelation,
@@ -632,7 +617,15 @@ permuteRewiringScores <- function(
     if (length(permutationScores)) {
         permutationScores <- do.call(rbind, permutationScores)
     } else {
-        permutationScores <- .asPlainDataFrame(.emptyPermutationScoreTable())
+        permutationScores <- data.frame(
+            nodeKey = character(),
+            permutation = integer(),
+            rawRewiringScore = numeric(),
+            rootMeanSquareRewiringScore = numeric(),
+            degreeMatchedZScore = numeric(),
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+        )
     }
 
     scoreFullyEstimated <- FALSE
@@ -733,13 +726,15 @@ permuteRewiringScores <- function(
         }
     )
 
-    if (!storeResult) {
-        return(result)
-    }
-
     if (is.null(resultName)) {
         resultName <- .makeResultName(groupLevels[[1L]], "vs", groupLevels[[2L]], "rewiringPermutation", separator = "_")
     }
 
-    .storeCorNettoResults(analysisData, "validationResults", result, resultName)
+    .returnOrStore(
+        resultObject = result,
+        analysisData = analysisData,
+        slotName = "validationResults",
+        resultName = resultName,
+        storeResult = storeResult
+    )
 }

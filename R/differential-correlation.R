@@ -463,9 +463,9 @@
 #' Test Differential Correlation Between Two Groups
 #'
 #' Compute differential correlation statistics for either all within-omic
-#' feature pairs in one assay or a supplied set of candidate edges.
-#' All-pairs testing evaluates every within-omic pair, while candidate-edge
-#' testing evaluates only the supplied edges.
+#' feature pairs or a supplied set of candidate edges. In all-pairs mode,
+#' omitting `assayName` tests every assay while keeping pairs within their
+#' assay; no cross-omic pairs are generated.
 #'
 #' @param analysisData A `MultiAssayExperiment`.
 #' @param groupColumn Sample metadata column used to define the two
@@ -473,13 +473,17 @@
 #' @param groupLevels A character vector of length two giving the group
 #'   labels. The first group is treated as the reference for gain or loss
 #'   labels.
-#' @param assayName Assay name used when testing all within-omic pairs.
+#' @param assayName Optional assay name used when testing all within-omic
+#'   pairs. When `NULL`, every assay is tested and the results are combined.
+#'   Ignored when `candidateEdgeTable` is supplied.
 #' @param candidateEdgeTable Optional candidate edges to test. May be a
 #'   standardized CorNetto edge table or a validated knowledge network.
 #'   Candidate self-loops are omitted with a warning because a feature's
 #'   correlation with itself is not an informative differential edge.
-#' @param featureSubset Optional feature subset used when `assayName` is
-#'   supplied.
+#' @param featureSubset Optional feature subset. In all-assay mode, a vector
+#'   is intersected with each assay, or a named list may supply a separate
+#'   subset for each assay. Assays absent from a named list use all their
+#'   features.
 #' @param correlationMethod Correlation method. Differential correlation
 #'   currently supports `"pearson"` and `"spearman"`.
 #' @param minimumAbsoluteCorrelation Minimum absolute correlation that
@@ -499,7 +503,9 @@
 #' @return A standardized edge `DataFrame` or an updated
 #'   `MultiAssayExperiment`.
 #' @details Within-group and differential p-values are adjusted over all
-#'   testable pairs before any correlation-strength filter is applied. Edges
+#'   testable pairs before any correlation-strength filter is applied. When
+#'   `assayName = NULL`, this is one combined multiple-testing family across
+#'   every within-omic pair from every assay. Edges
 #'   are then filtered to pairs with sufficient absolute correlation in at
 #'   least one group. When
 #'   `adjustedPValueThreshold` is not `NULL`, an edge is retained only if
@@ -573,7 +579,6 @@
 #'     analysisData,
 #'     groupColumn = "clinicalGroup",
 #'     groupLevels = c("Recovered", "PASC"),
-#'     assayName = "protein",
 #'     minimumAbsoluteCorrelation = 0,
 #'     adjustedPValueThreshold = 1,
 #'     pAdjustMethod = "fdr",
@@ -624,21 +629,19 @@ testDifferentialCorrelation <- function(
         groupLevel = groupLevels[[2L]]
     )
 
+    if (is.null(resultName)) {
+        resultName <- .makeResultName(groupLevels[[1L]], "vs", groupLevels[[2L]], "raw", separator = "_")
+    }
+
+    ## An explicitly empty featureSubset asks for a test over no pairs, which is
+    ## an empty edge table rather than an error.
     if (is.null(candidateEdgeTable) && !is.null(featureSubset) && !length(featureSubset)) {
-        rawResults <- .emptyStandardEdgeTable()
-        if (!storeResult) {
-            return(rawResults)
-        }
-
-        if (is.null(resultName)) {
-            resultName <- .makeResultName(groupLevels[[1L]], "vs", groupLevels[[2L]], "raw", separator = "_")
-        }
-
-        return(.storeCorNettoResults(
+        return(.returnOrStore(
+            resultObject = .emptyStandardEdgeTable(),
             analysisData = analysisData,
             slotName = "differentialCorrelationResults",
-            resultObject = rawResults,
-            resultName = resultName
+            resultName = resultName,
+            storeResult = storeResult
         ))
     }
 
@@ -737,19 +740,12 @@ testDifferentialCorrelation <- function(
         correlationMethod = correlationMethod
     )
 
-    if (!storeResult) {
-        return(rawResults)
-    }
-
-    if (is.null(resultName)) {
-        resultName <- .makeResultName(groupLevels[[1L]], "vs", groupLevels[[2L]], "raw", separator = "_")
-    }
-
-    .storeCorNettoResults(
+    .returnOrStore(
+        resultObject = rawResults,
         analysisData = analysisData,
         slotName = "differentialCorrelationResults",
-        resultObject = rawResults,
-        resultName = resultName
+        resultName = resultName,
+        storeResult = storeResult
     )
 }
 
@@ -833,17 +829,18 @@ createDifferentialCorrelationNetwork <- function(
     .assertScalarLogical(storeResult, "storeResult")
     differentialCorrelationTable <- .coerceStandardEdgeTable(differentialCorrelationTable)
 
+    storeNetwork <- function(edgeTable) {
+        .returnOrStore(
+            resultObject = edgeTable,
+            analysisData = analysisData,
+            slotName = "differentialCorrelationNetworks",
+            resultName = resultName,
+            storeResult = storeResult
+        )
+    }
+
     if (!nrow(differentialCorrelationTable)) {
-        if (!storeResult) {
-            return(differentialCorrelationTable)
-        }
-        .assertMultiAssayExperiment(analysisData)
-        return(.storeCorNettoResults(
-            analysisData,
-            "differentialCorrelationNetworks",
-            differentialCorrelationTable,
-            resultName
-        ))
+        return(storeNetwork(differentialCorrelationTable))
     }
 
     edgeData <- .asPlainDataFrame(differentialCorrelationTable)
@@ -852,17 +849,7 @@ createDifferentialCorrelationNetwork <- function(
             edgeData$adjustedPValue <= differenceAdjustedPValueThreshold
         edgeData <- edgeData[keepIndex, , drop = FALSE]
         if (!nrow(edgeData)) {
-            edgeTable <- .emptyStandardEdgeTable()
-            if (!storeResult) {
-                return(edgeTable)
-            }
-            .assertMultiAssayExperiment(analysisData)
-            return(.storeCorNettoResults(
-                analysisData = analysisData,
-                slotName = "differentialCorrelationNetworks",
-                resultObject = edgeTable,
-                resultName = resultName
-            ))
+            return(storeNetwork(.emptyStandardEdgeTable()))
         }
     }
 
@@ -887,18 +874,7 @@ createDifferentialCorrelationNetwork <- function(
     edgeData$edgeType <- "differentialCorrelation"
     edgeData$sourceType <- "differentialCorrelation"
     edgeData$isDirected <- FALSE
-    edgeTable <- .coerceStandardEdgeTable(edgeData)
-    if (!storeResult) {
-        return(edgeTable)
-    }
-
-    .assertMultiAssayExperiment(analysisData)
-    .storeCorNettoResults(
-        analysisData = analysisData,
-        slotName = "differentialCorrelationNetworks",
-        resultObject = edgeTable,
-        resultName = resultName
-    )
+    storeNetwork(.coerceStandardEdgeTable(edgeData))
 }
 
 .computeDegreeMatchedScores <- function(rawRewiringScore, totalConnections,
@@ -1041,12 +1017,13 @@ calculateRewiringScores <- function(
             degreeMatchedZScore = numeric(),
             check.names = FALSE
         )
-        if (!storeResult) {
-            return(rewiringTable)
-        }
-
-        .assertMultiAssayExperiment(analysisData)
-        return(.storeCorNettoResults(analysisData, "rewiringResults", rewiringTable, resultName))
+        return(.returnOrStore(
+            resultObject = rewiringTable,
+            analysisData = analysisData,
+            slotName = "rewiringResults",
+            resultName = resultName,
+            storeResult = storeResult
+        ))
     }
 
     edgeData <- .asPlainDataFrame(differentialCorrelationNetwork)
@@ -1114,15 +1091,11 @@ calculateRewiringScores <- function(
     rewiringTable$degreeMatchedZScore <- as.numeric(degreeMatched$degreeMatchedZScore)
     rewiringTable <- S4Vectors::DataFrame(rewiringTable, check.names = FALSE)
 
-    if (!storeResult) {
-        return(rewiringTable)
-    }
-
-    .assertMultiAssayExperiment(analysisData)
-    .storeCorNettoResults(
+    .returnOrStore(
+        resultObject = rewiringTable,
         analysisData = analysisData,
         slotName = "rewiringResults",
-        resultObject = rewiringTable,
-        resultName = resultName
+        resultName = resultName,
+        storeResult = storeResult
     )
 }
