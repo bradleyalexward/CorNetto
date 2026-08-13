@@ -113,22 +113,18 @@
     )
 }
 
-.computeSpearmanCorrelations <- function(assayMatrix) {
-    .computeCorrelationByPairwiseTests(assayMatrix = assayMatrix, correlationMethod = "spearman")
-}
-
-.computeKendallCorrelations <- function(assayMatrix) {
-    .computeCorrelationByPairwiseTests(assayMatrix = assayMatrix, correlationMethod = "kendall")
-}
-
+## Pearson is vectorized over the whole matrix; the rank methods have no
+## matrix-wide equivalent and go pair by pair through cor.test().
 .dispatchCorrelationMethod <- function(assayMatrix, correlationMethod) {
     correlationMethod <- match.arg(correlationMethod, c("pearson", "spearman", "kendall"))
 
-    switch(
-        EXPR = correlationMethod,
-        pearson = .computePearsonCorrelations(assayMatrix),
-        spearman = .computeSpearmanCorrelations(assayMatrix),
-        kendall = .computeKendallCorrelations(assayMatrix)
+    if (identical(correlationMethod, "pearson")) {
+        return(.computePearsonCorrelations(assayMatrix))
+    }
+
+    .computeCorrelationByPairwiseTests(
+        assayMatrix = assayMatrix,
+        correlationMethod = correlationMethod
     )
 }
 

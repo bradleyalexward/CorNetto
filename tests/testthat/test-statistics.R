@@ -62,7 +62,7 @@ test_that("perfect pearson correlations match cor.test", {
 })
 
 test_that("spearman correlations match cor.test with the normal approximation", {
-    computeSpearman <- getFromNamespace(".computeSpearmanCorrelations", "CorNetto")
+    computePairwise <- getFromNamespace(".computeCorrelationByPairwiseTests", "CorNetto")
 
     set.seed(11)
     m <- matrix(
@@ -70,7 +70,7 @@ test_that("spearman correlations match cor.test with the normal approximation", 
         nrow = 3,
         dimnames = list(paste0("F", 1:3), paste0("S", 1:15))
     )
-    result <- computeSpearman(m)
+    result <- computePairwise(m, correlationMethod = "spearman")
     reference <- suppressWarnings(
         stats::cor.test(m[1, ], m[2, ], method = "spearman", exact = FALSE)
     )
@@ -80,7 +80,7 @@ test_that("spearman correlations match cor.test with the normal approximation", 
 })
 
 test_that("kendall correlations match cor.test with the normal approximation", {
-    computeKendall <- getFromNamespace(".computeKendallCorrelations", "CorNetto")
+    computePairwise <- getFromNamespace(".computeCorrelationByPairwiseTests", "CorNetto")
 
     set.seed(13)
     m <- matrix(
@@ -88,7 +88,7 @@ test_that("kendall correlations match cor.test with the normal approximation", {
         nrow = 3,
         dimnames = list(paste0("F", 1:3), paste0("S", 1:15))
     )
-    result <- computeKendall(m)
+    result <- computePairwise(m, correlationMethod = "kendall")
     reference <- suppressWarnings(
         stats::cor.test(m[1, ], m[2, ], method = "kendall", exact = FALSE)
     )

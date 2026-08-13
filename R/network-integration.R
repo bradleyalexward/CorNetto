@@ -124,15 +124,7 @@
         return(NULL)
     }
 
-    switch(
-        EXPR = slotName,
-        knowledgeNetworks = knowledgeNetworks(analysisData),
-        correlationResults = correlationResults(analysisData),
-        differentialCorrelationResults = differentialCorrelationResults(analysisData),
-        differentialCorrelationNetworks = differentialCorrelationNetworks(analysisData),
-        integratedNetworks = integratedNetworks(analysisData),
-        NULL
-    )
+    getCorNettoResult(analysisData, slotName)
 }
 
 #' Combine Network Edge Tables
