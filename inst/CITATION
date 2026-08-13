@@ -25,7 +25,7 @@ bibentry(
     year = "2026",
     note = paste("R package version", meta$Version),
     url = "https://github.com/bradleyalexward/CorNetto",
-    doi = "10.64898/2026.07.14.26358048"
+    doi = "10.64898/2026.07.14.26358048",
     textVersion = paste(
         "Ward B, Gatto L, Balligand J-L, Bamps L, Cani PD, De Greef J,",
         "Dewulf JP, Haufroid V, Kabamba B, Pyr dit Ruys S, Vertommen D,",
