@@ -313,3 +313,33 @@ test_that("rewiring plots put small permutation tails first", {
 
     expect_identical(as.character(plotted$nodeKey), c("protein::P2", "protein::P3"))
 })
+
+test_that("written network tables round-trip in both formats", {
+    networkTables <- prepareCytoscapeTables(exampleKnowledgeNetwork())
+
+    for (fileFormat in c("tsv", "csv")) {
+        outputDir <- file.path(tempdir(), paste0("cornetto-roundtrip-", fileFormat))
+        writtenFiles <- writeNetworkTables(
+            networkTables,
+            directoryPath = outputDir,
+            fileFormat = fileFormat
+        )
+        expect_true(all(file.exists(writtenFiles)))
+
+        reread <- utils::read.delim(
+            writtenFiles[["edges"]],
+            sep = if (identical(fileFormat, "csv")) "," else "\t",
+            na.strings = c("NA", ""),
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+        )
+        expect_identical(names(reread), names(as.data.frame(networkTables$edges)))
+        expect_identical(nrow(reread), nrow(networkTables$edges))
+        expect_identical(
+            reread$fromFeatureIdentifier,
+            as.character(networkTables$edges$fromFeatureIdentifier)
+        )
+        ## Empty cells, not the literal "NA", so Cytoscape reads them as missing.
+        expect_true(all(is.na(reread$correlationValue)))
+    }
+})

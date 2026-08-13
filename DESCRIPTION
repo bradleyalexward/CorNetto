@@ -44,7 +44,6 @@ Imports:
     igraph,
     methods,
     MultiAssayExperiment,
-    readr,
     S4Vectors,
     stats,
     SummarizedExperiment,

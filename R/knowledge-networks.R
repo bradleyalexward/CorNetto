@@ -388,12 +388,15 @@ readKnowledgeNetwork <- function(
     }
 
     delimiter <- .matchDelimiter(filePath, delimiter)
-    knowledgeNetwork <- readr::read_delim(
-      file = filePath,
-      delim = delimiter,
-      show_col_types = FALSE,
-      progress = FALSE,
-      name_repair = "minimal"
+    ## Blank cells are read as NA so that a supplied-but-empty column falls back
+    ## to the same default as an absent one in .standardizeKnowledgeNetwork().
+    knowledgeNetwork <- utils::read.delim(
+        file = filePath,
+        sep = delimiter,
+        na.strings = c("NA", ""),
+        stringsAsFactors = FALSE,
+        check.names = FALSE,
+        encoding = "UTF-8"
     )
     knowledgeNetwork <- .asPlainDataFrame(knowledgeNetwork)
 

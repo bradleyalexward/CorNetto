@@ -273,13 +273,25 @@ writeNetworkTables <- function(
         dir.create(directoryPath, recursive = TRUE)
     }
 
-    extension <- fileFormat
-    nodePath <- file.path(directoryPath, paste0(prefix, "_nodes.", extension))
-    edgePath <- file.path(directoryPath, paste0(prefix, "_edges.", extension))
+    nodePath <- file.path(directoryPath, paste0(prefix, "_nodes.", fileFormat))
+    edgePath <- file.path(directoryPath, paste0(prefix, "_edges.", fileFormat))
 
-    writer <- if (identical(fileFormat, "csv")) readr::write_csv else readr::write_tsv
-    writer(.asPlainDataFrame(networkTables$nodes), nodePath)
-    writer(.asPlainDataFrame(networkTables$edges), edgePath)
+    ## Missing values are written as empty cells rather than the literal "NA",
+    ## which Cytoscape would otherwise import as a character value.
+    separator <- if (identical(fileFormat, "csv")) "," else "\t"
+    writeTable <- function(networkTable, filePath) {
+        utils::write.table(
+            .asPlainDataFrame(networkTable),
+            file = filePath,
+            sep = separator,
+            row.names = FALSE,
+            quote = TRUE,
+            na = "",
+            fileEncoding = "UTF-8"
+        )
+    }
+    writeTable(networkTables$nodes, nodePath)
+    writeTable(networkTables$edges, edgePath)
 
     invisible(c(nodes = nodePath, edges = edgePath))
 }
