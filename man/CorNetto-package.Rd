@@ -35,6 +35,14 @@ prior-supported candidate edges
 The vignette (\code{vignette("CorNetto")}) opens with a diagram of how these
 fit together.
 }
+\references{
+Ward B, Balligand J-L, Bamps L, Bommer G, Cani PD, De Greef J,
+Dewulf JP, Gatto L, Haufroid V, Kabamba B, Pyr dit Ruys S,
+Vertommen D, Yombi JC, Belkhir L, Elens L (2026). Longitudinal
+multi-omic network rewiring at the complement-coagulation interface
+in post-acute sequelae of COVID-19 (PASC). \emph{medRxiv}.
+\doi{10.64898/2026.07.14.26358048}
+}
 \seealso{
 Useful links:
 \itemize{
@@ -44,11 +52,11 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Bradley Ward \email{bradleyalexward@gmail.com}
+\strong{Maintainer}: Bradley Ward \email{bradleyalexward@gmail.com} (\href{https://orcid.org/0000-0003-0778-0153}{ORCID})
 
 Authors:
 \itemize{
-  \item Bradley Ward \email{bradleyalexward@gmail.com}
+  \item Bradley Ward \email{bradleyalexward@gmail.com} (\href{https://orcid.org/0000-0003-0778-0153}{ORCID})
 }
 
 Other contributors:
@@ -64,8 +72,9 @@ Other contributors:
   \item Sébastien Pyr dit Ruys [contributor]
   \item Didier Vertommen [contributor]
   \item Jean Cyr Yombi [contributor]
-  \item Leïla Belkhir \email{leila.belkhir@saintluc.uclouvain.be} [thesis advisor]
-  \item Laure Elens \email{laure.elens@uclouvain.be} [thesis advisor]
+  \item Leïla Belkhir \email{leila.belkhir@saintluc.uclouvain.be} [thesis advisor, funder]
+  \item Laure Elens \email{laure.elens@uclouvain.be} [thesis advisor, funder]
+  \item Sofina COVID Solidarity Fund [funder]
 }
 
 }

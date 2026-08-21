@@ -1,6 +1,6 @@
 Package: CorNetto
 Title: Knowledge-Guided Multi-Omic Correlation Network Analysis
-Version: 0.99.0
+Version: 0.99.1
 Authors@R: c(
     person("Bradley", "Ward", role = c("aut", "cre"),
            email = "bradleyalexward@gmail.com",
@@ -16,10 +16,11 @@ Authors@R: c(
     person("Sébastien", "Pyr dit Ruys", role = "ctb"),
     person("Didier", "Vertommen", role = "ctb"),
     person("Jean Cyr", "Yombi", role = "ctb"),
-    person("Leïla", "Belkhir", role = "ths",
+    person("Leïla", "Belkhir", role = c("ths", "fnd"),
            email = "leila.belkhir@saintluc.uclouvain.be"),
-    person("Laure", "Elens", role = "ths",
-           email = "laure.elens@uclouvain.be")
+    person("Laure", "Elens", role = c("ths", "fnd"),
+           email = "laure.elens@uclouvain.be"),
+    person("Sofina COVID Solidarity Fund", role = "fnd")
     )
 Description: Builds knowledge-guided multi-omic correlation networks from
     normalized transcriptomic, proteomic, and metabolomic abundance data.

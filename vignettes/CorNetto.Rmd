@@ -19,7 +19,8 @@ library(CorNetto)
 # Introduction
 
 CorNetto builds knowledge-guided multi-omic correlation networks from
-normalized assay data stored in a `MultiAssayExperiment`. It is intended
+normalized assay data stored in a `r BiocStyle::Biocpkg("MultiAssayExperiment")`.
+It is intended
 for workflows where transcriptomic, proteomic, metabolomic, or related
 assays are already normalized and the analysis question is whether
 groups differ in correlation structure, prior-supported connectivity, or
@@ -27,12 +28,13 @@ node-level rewiring.
 
 The package uses standard Bioconductor containers for assay and sample
 metadata, and returns standardized edge tables that can be combined,
-converted to `igraph` objects, or exported as Cytoscape-ready node and
-edge tables.
+converted to `r BiocStyle::CRANpkg("igraph")` objects, or exported as
+[Cytoscape](https://cytoscape.org)-ready node and edge tables.
 
 CorNetto is for downstream analysis after assay-level preprocessing. It
 uses Bioconductor containers, implements the Fisher z-difference test for
-differential correlation, and uses `igraph` for graph representation. The
+differential correlation, and uses `r BiocStyle::CRANpkg("igraph")` for graph
+representation. The
 package adds the glue needed for prior-guided
 candidate-edge differential correlation, knowledge-network-aware
 integration, focused subnetworks, and rewiring summaries in a single
@@ -40,23 +42,41 @@ reproducible workflow.
 
 # Relationship to existing Bioconductor software
 
-The Bioconductor package [dcanr](https://bioconductor.org/packages/dcanr)
+The Bioconductor package `r BiocStyle::Biocpkg("dcanr")`
 provides several methods and an evaluation framework for differential
 co-expression or association network inference. CorNetto has a narrower
-role. It works directly with `MultiAssayExperiment`, tests prespecified
+role. It works directly with `r BiocStyle::Biocpkg("MultiAssayExperiment")`,
+tests prespecified
 within- or cross-assay edges from heterogeneous prior networks, and carries
 those results through network integration and node-level rewiring summaries.
-It is therefore complementary to dcanr rather than a replacement for its
+It is therefore complementary to `r BiocStyle::Biocpkg("dcanr")` rather than a
+replacement for its
 method-comparison and benchmarking framework.
 
 # Workflow overview
 
 Green boxes are CorNetto functions, blue boxes are the objects they
-return, and orange boxes are inputs and the `MultiAssayExperiment` that
-carries results between steps. The three columns are independent entry
-points: group-specific correlation networks on the left, differential
-correlation and rewiring in the centre, and prior-knowledge assembly on
-the right.
+return, and orange boxes are inputs and the
+`r BiocStyle::Biocpkg("MultiAssayExperiment")` that
+carries results between steps.
+
+The diagram outlines how the functions relate to one another. Inputs (yellow)
+are read either by `readKnowledgeNetwork()`, for prior-knowledge databases, or
+by `createAnalysisData()`, for multi-omic abundance data and sample metadata.
+Each returns a package-native object: a prior network, or a CorNetto
+`MultiAssayExperiment`. From there the package builds correlation networks,
+differential correlation networks, rewiring scores and permuted rewiring
+scores.
+
+The order shown is illustrative, not prescriptive. You could equally run
+`createDifferentialCorrelationNetwork()`, narrow the result with
+`filterNetworkByNodes()`, then call `createNetworkGraph()` to obtain a focused
+differential-correlation graph.
+
+The bottom-right panel shows the two ways results are handled: a function can
+return its result directly, or store it inside the CorNetto
+`MultiAssayExperiment`, from which `getCorNettoResult()` retrieves it by name.
+Both work; which you use is a matter of preference.
 
 ```{r workflow-flowchart, echo = FALSE, out.width = "100%", fig.cap = "The CorNetto workflow, from input data and prior knowledge through to rewiring validation and export."}
 knitr::include_graphics("figures/flowchart.png")
@@ -184,6 +204,8 @@ user is still responsible for prespecifying the candidates and for the
 exchangeability assumption.
 
 ```{r permutation-validation}
+backend <- BiocParallel::SnowParam(workers = 2, type = "SOCK")
+
 rewiringValidation <- permuteRewiringScores(
     analysisData = analysisData,
     candidateEdgeTable = measuredKnowledgeNetwork,
@@ -193,7 +215,11 @@ rewiringValidation <- permuteRewiringScores(
     adjustedPValueThreshold = NULL,
     pAdjustMethod = "fdr",
     nPermutations = 99,
-    seed = 1
+    seed = 1,
+    # Remove the three lines below to run serially:
+    verbose = TRUE,
+    progressEvery = 50,
+    BPPARAM = backend
 )
 
 head(rewiringValidation$rewiringTable)
@@ -206,32 +232,11 @@ For a fully scored node, the smallest tail probability is
 each node. Treat the values as conditional rankings whenever
 `inferenceStatus` says so.
 
-Long runs can be parallelized by supplying a BiocParallel backend. On Windows,
-use a socket backend. Keep package examples and automated checks at two workers
-or fewer:
-
-```{r parallel-permutations, eval=FALSE}
-backend <- BiocParallel::SnowParam(
-    workers = 2,
-    type = "SOCK",
-    stop.on.error = TRUE,
-    progressbar = FALSE
-)
-
-parallelValidation <- permuteRewiringScores(
-    analysisData = analysisData,
-    candidateEdgeTable = measuredKnowledgeNetwork,
-    groupColumn = "clinicalGroup",
-    groupLevels = c("PASC", "Recovered"),
-    minimumAbsoluteCorrelation = 0,
-    adjustedPValueThreshold = NULL,
-    nPermutations = 999,
-    seed = 1,
-    verbose = TRUE,
-    progressEvery = 300,
-    BPPARAM = backend
-)
-```
+The call above uses a `r BiocStyle::Biocpkg("BiocParallel")` socket backend,
+which is the portable choice on Windows. Keep examples and automated checks at
+two workers or fewer. `verbose` and `progressEvery` control progress reporting;
+`BPPARAM` selects the backend. A fixed `seed` gives the same label allocations
+whatever the worker count, so serial and parallel runs agree numerically.
 
 # Differential correlation and rewiring
 
@@ -321,23 +326,81 @@ nrow(cytoscapeTables$edges)
 # Graph creation
 
 `createNetworkGraph()` converts a standardized CorNetto edge table to an
-`igraph` object. Plotting can then use standard igraph methods.
+`r BiocStyle::CRANpkg("igraph")` object. Plotting can then use standard igraph
+methods.
+
+A node is one feature in one assay, drawn with an assay-specific colour and
+shape. An edge is a connection between two features. Node colour could equally
+encode a rewiring score, a permutation tail probability, or any other
+node-level column.
 
 ```{r graph-plot, fig.width = 8, fig.height = 6}
-graphObject <- createNetworkGraph(focusedNetwork)
+displayGraph <- igraph::simplify(
+    igraph::as_undirected(createNetworkGraph(focusedNetwork), mode = "collapse")
+)
+
+assayStyle <- data.frame(
+    assay = c("protein", "transcript", "metabolite"),
+    colour = c("#2B8CBE", "#31A354", "#E6842A"),
+    shape = c("circle", "square", "csquare")
+)
+idx <- match(igraph::V(displayGraph)$assayName, assayStyle$assay)
+
+set.seed(1)
 plot(
-    graphObject,
-    layout = igraph::layout_with_fr(graphObject),
-    vertex.label = NA,
-    vertex.size = 8,
-    edge.width = 1,
-    main = "Example focused CorNetto network"
+    displayGraph,
+    layout = igraph::layout_with_fr(displayGraph),
+    vertex.color = assayStyle$colour[idx],
+    vertex.shape = assayStyle$shape[idx],
+    vertex.label = igraph::V(displayGraph)$nodeName,
+    vertex.label.cex = 0.7,
+    vertex.label.color = "black",
+    vertex.label.family = "sans",
+    vertex.frame.color = "white",
+    vertex.size = 20,
+    edge.color = "grey65",
+    main = "Focused CorNetto network around the seed nodes"
+)
+legend(
+    "bottomleft",
+    legend = assayStyle$assay,
+    pt.bg = assayStyle$colour,
+    pch = c(21, 22, 23),
+    pt.cex = 1.6,
+    bty = "n",
+    title = "Assay"
 )
 ```
 
+```{r graph-counts}
+c(nodes = igraph::gorder(displayGraph),
+  connections = igraph::gsize(displayGraph))
+```
+
+The `r nrow(cytoscapeTables$edges)` exported edge rows reduce to
+`r igraph::gsize(displayGraph)` drawn connections for two reasons, and no edge
+is filtered out on the way.
+
+First, `combineNetworks(includeReverseEdges = TRUE)` stores each undirected
+edge in both directions, which accounts for most of the difference. Reverse
+copies are added for undirected edges only. This is a workaround rather than a
+claim about biology: several Cytoscape algorithms require an explicit
+direction to traverse an edge, while the edges themselves are not inherently
+directed, as with a correlation or a protein-protein interaction. Storing both
+orientations lets those algorithms move either way across such an edge.
+Genuinely directed edges are left untouched.
+
+Second, one feature pair can carry several rows when more than one layer
+supports it, since prior knowledge, a group-specific correlation and a
+differential-correlation result are separate rows describing the same pair.
+
+The display graph shows one line per connected pair; the exported tables keep
+every row.
+
 # Export
 
-Use `writeNetworkTables()` when Cytoscape-ready files are needed. The
+Use `writeNetworkTables()` when [Cytoscape](https://cytoscape.org)-ready files
+are needed. The
 example writes to a temporary directory.
 
 ```{r export}
@@ -349,6 +412,12 @@ writtenFiles <- writeNetworkTables(
 )
 
 basename(writtenFiles)
+```
+
+# Citation
+
+```{r citation}
+citation("CorNetto")
 ```
 
 # Session information
