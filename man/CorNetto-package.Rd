@@ -61,7 +61,6 @@ Authors:
 
 Other contributors:
 \itemize{
-  \item Laurent Gatto [thesis advisor]
   \item Jean-Luc Balligand [contributor]
   \item Laurence Bamps [contributor]
   \item Patrice D. Cani [contributor]
