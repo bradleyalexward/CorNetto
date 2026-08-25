@@ -45,7 +45,7 @@ authors:
     given-names: Laure
     email: laure.elens@uclouvain.be
     affiliation: "Integrated Pharmacometrics, Pharmacogenomics and Pharmacokinetics Group (PMGK), Louvain Drug Research Institute (LDRI), UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium; Louvain Center for Toxicology and Applied Pharmacology (LTAP), Institut de Recherche Expérimentale et Clinique (IREC), UCLouvain, Université Catholique de Louvain, Brussels, 1200, Belgium"
-version: 1.0
+version: 0.99.1
 license: Artistic-2.0
 repository-code: "https://github.com/bradleyalexward/CorNetto"
 url: "https://github.com/bradleyalexward/CorNetto"
